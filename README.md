@@ -52,7 +52,7 @@ twinfixeno aims to make that representation useful and understandable through:
 5. **Evidence-backed AI** — local language-model assistance grounded in authorised records.
 6. **Governed integration** — API-first services and MCP tools with access checks and audit trails.
 
-The initial use case is a synthetic chronic-care patient journey. The MVP is intentionally not a whole-body physiological simulator.
+The initial use case is a synthetic chronic-care patient journey. The MVP is intentionally not a whole-body physiological simulator. The current development environment includes a Keycloak realm and a HAPI FHIR R4 server; patient APIs require a valid Keycloak access token by default.
 
 ## Product principles
 
@@ -319,7 +319,7 @@ On Windows PowerShell:
 Copy-Item .env.example .env
 ```
 
-Update local development values as required. Never commit populated secrets or production credentials.
+Update local development values as required. Change the Keycloak bootstrap administrator password before use. Never commit populated secrets or production credentials.
 
 ### 3. Build and start containers
 
@@ -363,20 +363,25 @@ Formal Alembic migrations are a follow-up; the current API creates its initial s
 docker compose exec api alembic upgrade head
 ```
 
-Synthetic demo data will be loaded through a dedicated seed command once the seed utility is implemented.
+The API creates its initial schema and loads one fictional patient with six observations at startup. Keycloak imports the `twinfixeno` realm on first start; HAPI FHIR runs as a separate service.
 
-> **Current status:** The Docker Compose foundation is committed. Keycloak, HAPI FHIR, migrations, simulation and AI services are not yet included; consult `docs/MVP-IMPLEMENTATION.md`.
+> **Current status:** Keycloak OIDC login, API JWT validation and basic Patient resource synchronisation are implemented. See `docs/MVP-IMPLEMENTATION.md` for limitations.
 
 ## Configuration
 
-The planned `.env.example` will document configuration similar to the following. Use generated local-only values and replace all defaults before any shared or production deployment.
+The committed `.env.example` documents the current local configuration. Replace all defaults before any shared or production deployment.
 
 | Variable | Purpose | Example for local development |
 |---|---|---|
 | `APP_ENV` | Runtime environment | `development` |
 | `APP_SECRET_KEY` | Application signing secret | Generate a random secret |
 | `DATABASE_URL` | PostgreSQL connection | `postgresql+psycopg://twinfixeno:change-me@postgres:5432/twinfixeno` |
-| `FHIR_BASE_URL` | HAPI FHIR endpoint | `http://hapi-fhir:8080/fhir` |
+| `FHIR_BASE_URL` | HAPI FHIR endpoint | `http://fhir:8080/fhir` |
+| `KEYCLOAK_ISSUER` | Token issuer | `http://localhost:8081/realms/twinfixeno` |
+| `KEYCLOAK_JWKS_URL` | Internal signing-key endpoint | `http://keycloak:8080/realms/twinfixeno/protocol/openid-connect/certs` |
+| `JWT_AUDIENCE` | API token audience | `twinfixeno-api` |
+| `AUTH_REQUIRED` | Require bearer token | `true` |
+| `KEYCLOAK_ADMIN_PASSWORD` | Local bootstrap admin password | Change before use |
 | `QDRANT_URL` | Qdrant endpoint | `http://qdrant:6333` |
 | `OBJECT_STORAGE_ENDPOINT` | Object storage endpoint | `http://seaweedfs:8333` |
 | `OIDC_ISSUER_URL` | Keycloak issuer | Local Keycloak realm URL |
@@ -390,7 +395,7 @@ Do not expose PostgreSQL, Qdrant, object storage, model inference or internal se
 
 ## Running the platform
 
-### Planned local URLs
+### Local URLs
 
 These are the development endpoints defined by the current `compose.yaml`.
 
@@ -399,13 +404,14 @@ These are the development endpoints defined by the current `compose.yaml`.
 | Web application | http://localhost:3000 |
 | FastAPI / OpenAPI | http://localhost:8000/docs |
 | APISIX gateway | http://localhost:9080 |
-| HAPI FHIR | http://localhost:8080/fhir |
+| HAPI FHIR | http://localhost:8090/fhir/metadata |
+| Keycloak | http://localhost:8081 |
 | Keycloak | http://localhost:8081 |
 | Qdrant dashboard/API | http://localhost:6333/dashboard |
 | Grafana | http://localhost:3001 |
 | Prometheus | http://localhost:9090 |
 
-### Planned developer workflow
+### Developer workflow
 
 Frontend:
 
@@ -438,7 +444,7 @@ pip install -e "services/api[dev]"
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-The current container workflow is the supported quick start. The standalone developer commands are retained for the next development iteration.
+The container workflow is the supported quick start. The API currently validates access tokens against the Keycloak realm JWKS endpoint.
 
 ### Local LLM
 
@@ -525,7 +531,7 @@ The first interoperability scope targets HL7 FHIR R4.
 | CarePlan | Documented care-plan context |
 | DocumentReference | Reference to clinical documents |
 
-FHIR resources remain the interoperable source representation. The twin engine creates application-specific derived state with references back to those resources.
+FHIR resources remain the interoperable source representation. The current API can synchronise the synthetic application patient to a FHIR `Patient` resource using a stable identifier system, and retrieve matching FHIR Patient search results. Observation and other clinical resource ingestion are not implemented yet. The twin engine will create application-specific derived state with references back to those resources.
 
 The implementation must validate resource profiles and terminology assumptions rather than treating every FHIR resource as clinically equivalent.
 
@@ -611,8 +617,9 @@ MCP is a protocol boundary, not an authorisation mechanism. Every tool must vali
 
 Security controls are foundational, even in the MVP.
 
-- OIDC authentication through Keycloak.
-- Role-based access and patient-level authorisation.
+- OIDC authentication through Keycloak (development realm and browser PKCE flow).
+- API-side RS256 JWT signature, issuer and audience validation against Keycloak JWKS.
+- Realm roles are included in the authenticated principal; fine-grained role and patient-level authorisation policies are still required.
 - Server-side permission checks on every patient resource and MCP tool.
 - PostgreSQL row-level security where appropriate, in addition to application checks.
 - TLS for network communications in shared environments.
@@ -656,14 +663,14 @@ Clinical correctness cannot be established by software tests alone. Domain exper
 - [x] FastAPI service
 - [x] PostgreSQL persistence
 - [ ] Formal database migrations
-- [ ] Keycloak authentication
+- [x] Keycloak authentication (development OIDC and API token validation)
 - [x] APISIX gateway
 - [x] Docker Compose development environment
 
 ### Milestone 2 — Patient and twin
 - [ ] Synthetic patient registry
-- [ ] HAPI FHIR integration
-- [ ] FHIR resource ingestion
+- [x] HAPI FHIR service and Patient resource synchronisation
+- [ ] FHIR Observation and other clinical resource ingestion
 - [ ] Twin state generation
 - [ ] Immutable versioned snapshots
 - [ ] Clinical timeline and trends
