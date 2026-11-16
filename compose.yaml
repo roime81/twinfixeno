@@ -91,6 +91,8 @@ services:
       SPRING_DATASOURCE_DRIVER_CLASS_NAME: org.postgresql.Driver
       HIBERNATE_DIALECT: ca.uhn.fhir.jpa.model.dialect.HapiFhirPostgresDialect
       SPRING_JPA_PROPERTIES_HIBERNATE_DIALECT: ca.uhn.fhir.jpa.model.dialect.HapiFhirPostgresDialect
+      SPRING_JPA_HIBERNATE_DDL_AUTO: update
+      SPRING_JPA_PROPERTIES_HIBERNATE_HBM2DDL_AUTO: update
       SPRING_JPA_PROPERTIES_HIBERNATE_SEARCH_ENABLED: "false"
     depends_on:
       fhir-db:
@@ -102,7 +104,7 @@ services:
   fhir-ready:
     image: curlimages/curl:8.12.1
     restart: "no"
-    command: ["--fail", "--silent", "--show-error", "--retry", "120", "--retry-connrefused", "--retry-delay", "2", "--retry-max-time", "300", "http://fhir:8080/fhir/metadata"]
+    command: ["--fail", "--silent", "--show-error", "--retry", "120", "--retry-connrefused", "--retry-delay", "2", "--retry-max-time", "300", "http://fhir:8080/fhir/Patient?_count=1"]
     depends_on:
       fhir:
         condition: service_started
