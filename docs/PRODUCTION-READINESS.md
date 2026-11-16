@@ -12,8 +12,10 @@ The integrated Compose stack is a runnable synthetic-data development/review env
 - FHIR Patient synchronisation and synthetic Observation publication.
 - Patient-scoped Observation/Condition/Encounter import and timeline.
 - Append-only twin snapshot artifacts with SHA-256 checksums and provenance.
-- Deterministic percentage-delta scenarios with explicit assumptions.
-- Local data-summary report.
+- Deterministic percentage-delta scenarios with explicit assumptions (not a physiological model).
+- Local Ollama chat and embedding models, patient-filtered Qdrant RAG and source references.
+- MCP Streamable HTTP with timeline, evidence-indexing and evidence-query tools that forward caller tokens to the API.
+- Deterministic local context report as a fallback.
 - Application-level audit events.
 - One-command local Compose startup.
 
@@ -34,21 +36,22 @@ The integrated Compose stack is a runnable synthetic-data development/review env
 
 ### Persistence and recovery
 - Add Alembic migrations, tested upgrade/rollback paths and a controlled migration job. `Base.metadata.create_all` is not a production migration strategy.
-- Configure supported production PostgreSQL and HAPI FHIR databases, encryption at rest, backup schedules, restore tests, retention, high availability and disaster recovery objectives.
+- Configure supported production PostgreSQL and HAPI FHIR databases, encryption at rest, backup schedules, restore tests, retention, high availability and disaster recovery objectives. The current Compose HAPI FHIR container is not configured with a supported external persistent database and must be replaced or explicitly configured before production.
 - Add independent tamper-evident audit storage and access reviews. The current audit table and snapshot SHA-256 checksum are not a signed, independently immutable evidence system.
 - Define operational ownership, SLOs, incident response, patching, vulnerability management and dependency/SBOM processes.
 
 ### AI and simulation safety
-- The current Evidence Assistant is a deterministic summary, not an LLM or RAG implementation.
-- No MCP server, model gateway, vector database or local model runtime is included in this release.
-- The current simulation is a percentage-delta calculation. It must not be presented as a physiological model or used to influence diagnosis/treatment.
-- Any future model requires evidence traceability, access-control propagation, prompt/model/tool versioning, evaluation, rollback, human review and clinical validation.
+- The local AI path is implemented for synthetic-data demonstration: Ollama serves Qwen 2.5 3B and nomic-embed-text; Qdrant stores embeddings; API retrieval filters by patient ID; MCP forwards caller bearer tokens to the API.
+- The current Evidence Assistant is not a validated clinical assistant. Prompt instructions are not a safety barrier. There is no production model registry, prompt/tool version registry, independent evaluation harness, jailbreak/prompt-injection testing, clinical review workflow, full trace correlation or validated clinical safety case.
+- The MCP server currently exposes only timeline, evidence-indexing and evidence-query tools. It is not an enterprise agent platform and does not provide its own authorization boundary.
+- The current simulation is a percentage-delta arithmetic calculation. It must not be presented as a physiological model or used to influence diagnosis/treatment.
+- Before any clinical use, require representative evaluations, access-control tests, threat modelling, human oversight, data lineage, rollback, model-change governance and formal clinical safety/regulatory review.
 
 ### Verification
 - Run the new CI workflow on the release commit and resolve all failures.
 - Add browser-level tests for real OIDC login, patient selection, role-specific actions, FHIR sync, snapshot creation/verification, scenario persistence and admin grant/audit views.
 - Perform security testing with positive and negative cross-patient access cases and production-like identity/network configuration.
-- Verify that all containers have health checks, non-root execution where supported, resource limits, image pinning/digests, log rotation and tested recovery procedures.
+- Verify that all containers have health checks, non-root execution where supported, resource limits, image pinning/digests, log rotation and tested recovery procedures. Add a browser-level Playwright suite for real Keycloak login, role-specific controls, patient switching (including no stale cross-patient display), FHIR sync, RAG indexing/querying, snapshot verification and audit review.
 
 ## Go-live decision
 
