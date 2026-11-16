@@ -25,19 +25,24 @@ def get_accessible_patient(db: Session, patient_id: int, user: dict, write: bool
         raise HTTPException(status_code=404, detail="Patient not found")
     if "twinfixeno-admin" in roles:
         return patient
-    principal_filters = []
-    if user.get("sub"):
-        principal_filters.append(PatientAccessGrant.user_subject == user["sub"])
-    # Username matching is a local-demo compatibility switch only. In a
-    # shared/production environment, bind grants to Keycloak's immutable sub.
-    if os.getenv("ALLOW_USERNAME_PATIENT_GRANTS", "false").lower() in {"1", "true", "yes"} and user.get("preferred_username"):
-        principal_filters.append(PatientAccessGrant.username == user["preferred_username"])
-    if not principal_filters:
-        raise HTTPException(status_code=404, detail="Patient not found")
-    grants = list(db.scalars(select(PatientAccessGrant).where(
-        PatientAccessGrant.patient_id == patient_id,
-        or_(*principal_filters)
-    )).all())
+    subject = user.get("sub")
+    username = user.get("preferred_username")
+    grants = []
+    if subject:
+        grants = list(db.scalars(select(PatientAccessGrant).where(
+            PatientAccessGrant.patient_id == patient_id,
+            PatientAccessGrant.user_subject == subject,
+        )).all())
+
+    # Only fall back to a mutable username when there is no subject grant and
+    # the local synthetic demo explicitly enables compatibility matching.
+    allow_username = os.getenv("ALLOW_USERNAME_PATIENT_GRANTS", "false").lower() in {"1", "true", "yes"}
+    if not grants and allow_username and username:
+        grants = list(db.scalars(select(PatientAccessGrant).where(
+            PatientAccessGrant.patient_id == patient_id,
+            PatientAccessGrant.username == username,
+        )).all())
+
     if not grants:
         raise HTTPException(status_code=404, detail="Patient not found")
     if write and not any(grant.access_level == "write" for grant in grants):
