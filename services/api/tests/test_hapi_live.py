@@ -23,6 +23,7 @@ def test_live_hapi_fhir_patient_and_clinical_resource_ingestion(client):
         patient = db.scalar(select(Patient).where(Patient.external_id == "SYN-0001"))
         patient_result = fhir.upsert_demo_patient(patient)
         fhir_patient_id = patient_result["resource"]["id"]
+        assert fhir.publish_local_observations(db, patient, fhir_patient_id) == 6
 
     headers = {"Accept": "application/fhir+json", "Content-Type": "application/fhir+json"}
     resources = [

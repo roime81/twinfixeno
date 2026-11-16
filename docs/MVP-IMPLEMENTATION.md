@@ -1,69 +1,133 @@
 # MVP implementation status
 
-## Implemented
-- Next.js 15 / React 19 dashboard with Keycloak browser login using authorization-code flow and PKCE.
-- Keycloak development realm with demo clinician, administrator and researcher identities.
-- FastAPI RS256 JWT signature, issuer and audience validation against Keycloak JWKS.
-- Patient-level access grants bound to Keycloak subject and/or username.
-- Role policy: administrator has platform-wide access; clinicians can read/write assigned patients; researchers have read-only access to assigned patients.
-- Administrator-only access-grant create/update and revoke endpoints.
-- HAPI FHIR R4 Patient synchronisation.
-- FHIR R4 ingestion of Observation, Condition and Encounter resources, with patient-reference verification, pagination, version metadata and content hashes.
-- Persisted FHIR resource records and a chronological clinical timeline API and dashboard section.
-- Immutable, versioned twin snapshots with canonical JSON SHA-256 digest and source-level provenance.
-- PostgreSQL triggers reject UPDATE/DELETE against snapshot headers and snapshot artifacts; ORM hooks enforce append-only behavior in tests and SQLite development.
-- Pytest API integration tests for access control, FHIR ingestion, timeline, snapshot integrity and immutability.
-- GitHub Actions workflow runs API tests for pushes and pull requests.
+## Integrated local release
 
-## Patient access policy
-| Role | Patient scope | Read | Write |
-|---|---|---:|---:|
-| `twinfixeno-admin` | All patients | Yes | Yes |
-| `clinician` | Explicit patient grant | Yes | Yes, only with write grant |
-| `researcher` | Explicit patient grant | Yes | No |
-| Other / no role | None | No | No |
+The repository now runs as one Docker Compose application stack:
 
-A patient without a matching subject or username grant is returned as not found to reduce patient enumeration. Administrators manage grants through:
-- `POST /api/v1/patients/{id}/access-grants`
-- `DELETE /api/v1/patients/{id}/access-grants/{grant_id}`
+- Next.js 15 / React 19 web application.
+- FastAPI application API.
+- PostgreSQL 16 application database.
+- Keycloak 26 OIDC identity service with browser PKCE.
+- HAPI FHIR R4 server.
+- Apache APISIX API gateway.
+
+Start the synthetic-data environment from the repository root:
+
+```powershell
+Copy-Item .env.example .env
+docker compose up --build -d
+docker compose ps
+```
+
+The supported local URLs are:
+
+| Component | URL |
+|---|---|
+| Web application | http://localhost:3000 |
+| FastAPI OpenAPI | http://localhost:8000/docs |
+| APISIX gateway | http://localhost:9080 |
+| Keycloak | http://localhost:8081 |
+| HAPI FHIR metadata | http://localhost:8090/fhir/metadata |
+
+Compose now includes restart policies and readiness checks for PostgreSQL, Keycloak and the API/web containers. HAPI FHIR has a readiness probe; its health command depends on the utility available in the upstream image. The API has `/health` and database-backed `/health/ready` endpoints.
+
+## Implemented application capabilities
+
+### Identity and access
+- Keycloak browser login using authorization-code flow and PKCE.
+- FastAPI RS256 JWT verification, issuer/audience validation and Keycloak JWKS.
+- Role policy: administrators have platform-wide access; clinicians and researchers require explicit patient grants.
+- Clinicians can write only when a patient grant is `write`; researchers are read-only.
+- UI controls now use the server-side patient permission endpoint rather than the realm role alone.
+- Administrator-only grant list, create/update and revoke workflows.
+
+### Patient registry
+- List authorised patients.
+- Search by synthetic ID, given name or family name.
+- Administrator-only creation of synthetic patients.
+- Patient selection drives the rest of the workspace.
+- Only synthetic IDs matching the `SYN-` prefix are accepted by the create API.
+
+### FHIR R4 integration
+- Patient upsert/search in HAPI FHIR.
+- Local synthetic observations are idempotently published as FHIR Observation resources before import.
+- Observation, Condition and Encounter resources are imported using patient-scoped FHIR searches.
+- Patient-reference checks, pagination origin validation, version metadata and resource hashes are retained.
+- Clinical timeline displays imported resources and source identity.
+- HAPI FHIR remains a development service. Profiles, terminology, authentication, persistence and operational controls require production work.
+
+### Twin engine and snapshots
+- Snapshot headers and artifacts are versioned and append-only.
+- Canonical JSON payload and SHA-256 integrity checksum.
+- Source provenance includes local observation IDs and FHIR resource type/id/version/lastUpdated/content hash.
+- Snapshot history and artifact inspection are available in the UI.
+- The UI re-computes the checksum verification status through the API.
+
+### Simulation studio
+- Scenario runs are persisted in PostgreSQL.
+- A scenario selects a recorded baseline observation and applies a bounded percentage delta.
+- The run stores the baseline reference, inputs, formula identifier/version, result, assumptions, timestamp and creator.
+- All results are prominently labelled **Hypothetical scenario — not a clinical prediction**.
+- This is an arithmetic scenario tool, not a validated physiological or disease-progression model.
+
+### Evidence assistant
+- A local deterministic context report summarises available observations and imported FHIR resource counts/ranges.
+- The report states the engine identifier and limitations.
+- No patient data is sent to an external model provider.
+- This feature is not an LLM, RAG pipeline or clinical decision-support system. The private LLM/RAG milestone remains outstanding.
+
+### Governance and audit
+- Audit events are recorded for snapshot creation and inspection, patient observation/timeline/context access, patient creation, simulations, FHIR sync and grant changes.
+- Audit rows are append-only in application ORM hooks and PostgreSQL triggers.
+- Administrators can review recent audit events in the UI.
+- This is an application-level audit foundation, not yet an independently protected regulatory audit service or distributed trace platform.
+
+## API routes
+
+All `/api/v1` routes require a valid Keycloak bearer token by default.
+
+| Route | Purpose |
+|---|---|
+| `GET /api/v1/me` | Current user identity and realm roles |
+| `GET /api/v1/patients?q=` | Search/list authorised patients |
+| `POST /api/v1/patients` | Create a synthetic patient (admin) |
+| `GET /api/v1/patients/{id}` | Read patient |
+| `GET /api/v1/patients/{id}/permissions` | Effective patient permissions for UI |
+| `GET /api/v1/patients/{id}/observations` | Read local observations |
+| `GET /api/v1/patients/{id}/timeline` | Read imported FHIR timeline |
+| `GET /api/v1/patients/{id}/insights` | Generate local deterministic context report |
+| `POST /api/v1/patients/{id}/fhir/sync` | Publish local observations and import supported resources |
+| `GET /api/v1/patients/{id}/fhir` | Search the FHIR Patient |
+| `GET /api/v1/patients/{id}/snapshots` | List twin snapshots |
+| `POST /api/v1/patients/{id}/snapshots` | Create immutable snapshot |
+| `GET /api/v1/patients/{id}/snapshots/{snapshot_id}` | Retrieve and verify snapshot artifact |
+| `GET /api/v1/patients/{id}/simulations` | List scenario runs |
+| `POST /api/v1/patients/{id}/simulations` | Run and persist a deterministic scenario |
+| `GET /api/v1/patients/{id}/access-grants` | List grants (admin) |
+| `POST /api/v1/patients/{id}/access-grants` | Create/update grant (admin) |
+| `DELETE /api/v1/patients/{id}/access-grants/{grant_id}` | Revoke grant (admin) |
+| `GET /api/v1/audit/events` | Read audit events (admin) |
 
 ## Demo identities
-All credentials below are temporary development-only credentials. Keycloak forces password change on first login. Change them before sharing the environment and never expose the development realm publicly.
+
+These credentials are development-only. Keycloak forces a password change on first login. Do not expose this realm or retain these users in a shared or production environment.
+
 - Clinician: `demo.clinician` / `Demo-Only-Change-Me-2026!` (write grant to SYN-0001)
 - Researcher: `demo.researcher` / `Demo-Research-Change-Me-2026!` (read-only grant to SYN-0001)
-- Administrator: `demo.admin` / `Demo-Admin-Change-Me-2026!` (platform-wide access and grant management)
-
-## FHIR endpoints
-- HAPI FHIR base URL inside Compose: `http://fhir:8080/fhir`
-- Host capability statement: http://localhost:8090/fhir/metadata
-- Synchronise Patient and ingest supported clinical resources: `POST /api/v1/patients/{id}/fhir/sync`
-- Search matching FHIR Patient: `GET /api/v1/patients/{id}/fhir`
-- FHIR-backed timeline: `GET /api/v1/patients/{id}/timeline`
-
-The ingestion adapter requests Observation, Condition and Encounter resources scoped to the resolved FHIR Patient reference. It verifies each returned resource's subject/patient reference before persistence. Updates are upserted by FHIR resource type and logical id; the FHIR meta.versionId, meta.lastUpdated, status, effective date, full resource JSON and SHA-256 are retained. Pagination is followed only when the next link remains on the configured FHIR server origin and path.
-
-## Immutable snapshots and provenance
-A snapshot consists of an append-only snapshot header and a one-to-one artifact containing:
-- Canonical JSON payload of local observations and imported FHIR resources.
-- SHA-256 digest of the canonical payload.
-- Capture timestamp and creator.
-- Per-source provenance including source system, resource type, source id, FHIR version id / lastUpdated where applicable, observation timestamp, and per-record content hash.
-
-The API exposes:
-- `POST /api/v1/patients/{id}/snapshots`
-- `GET /api/v1/patients/{id}/snapshots`
-- `GET /api/v1/patients/{id}/snapshots/{snapshot_id}`
-
-Snapshots are never edited in place. Create a new version to capture changed source data. PostgreSQL triggers enforce append-only records at the database layer; SQLAlchemy hooks provide the same protection in local SQLite/test use. The digest provides integrity evidence, not a digital signature or proof of trusted origin.
+- Administrator: `demo.admin` / `Demo-Admin-Change-Me-2026!` (platform-wide access)
 
 ## Automated tests
-Run locally:
-```bash
-cd services/api
-python -m pip install -r requirements.txt
-DATABASE_URL=sqlite:///./test.db AUTH_REQUIRED=false pytest -q
-```
-On Windows PowerShell:
+
+The API test suite covers patient access isolation, patient permission reporting, registry create/search, administrator grant management, simulation persistence/formula output, FHIR resource import and patient-reference verification, snapshot integrity/immutability and audit event creation.
+
+The live HAPI integration test also publishes the six local synthetic observations to a running HAPI FHIR R4 server before exercising resource ingestion. CI now includes:
+- Python API tests plus live HAPI FHIR integration.
+- Next.js production build.
+
+A passing API test suite does not certify the browser experience, infrastructure security, clinical correctness or production readiness. The new combined CI results must be reviewed for the commit that contains these changes.
+
+Run API tests locally:
+
 ```powershell
 cd services/api
 python -m pip install -r requirements.txt
@@ -71,16 +135,21 @@ $env:DATABASE_URL = "sqlite:///./test.db"
 $env:AUTH_REQUIRED = "false"
 pytest -q
 ```
-GitHub Actions runs the API suite on pushes to main and pull requests. The workflow starts a real HAPI FHIR R4 container and runs a live-server ingestion test in addition to mocked API tests. The live test verifies Patient creation and actual Observation, Condition and Encounter search/import. Latest hosted run #14 passed: 12 tests passed, including the live HAPI integration test.
 
-## Limitations and production hardening
-- This remains a synthetic-data MVP, not a clinical system or medical device.
-- The development Keycloak realm, demo users and passwords are not production identity configuration.
-- Fine-grained policies are patient-grant based; organisational tenancy, care-team relationships, purpose-of-use, consent, break-glass access, audit events and delegated access still need design.
-- FHIR adapter currently ingests Observation, Condition and Encounter. It does not yet ingest MedicationRequest, DiagnosticReport, Procedure, AllergyIntolerance or Provenance.
-- FHIR resources are queried by patient reference; production deployment should use a secured FHIR endpoint, TLS, service identity, terminology validation and robust retry/backoff.
-- Snapshot SHA-256 is an integrity checksum. Add signing, key custody and independent audit storage for tamper-evident regulated workflows.
-- HAPI FHIR persistence, backup/restore, migrations, retention and high availability require production configuration.
-- The hosted CI suite passed on 16 November 2026: 12 tests passed against SQLite plus a live HAPI FHIR R4 container. See [GitHub Actions run #14](https://github.com/roime81/twinfixeno/actions/runs/43806365853).
+## Remaining milestones and production blockers
 
-The demo patient is fictional. Never use real patient data in this repository or its development environment.
+The following work is not represented as complete:
+
+- Formal Alembic migrations and upgrade/downgrade testing.
+- Production Keycloak configuration, TLS, secrets management and non-demo identities.
+- HAPI FHIR production database, authentication, SMART-on-FHIR/OAuth policy, terminology/profile validation, backup and HA.
+- Broader FHIR coverage such as MedicationRequest, DiagnosticReport, CarePlan, DocumentReference and AllergyIntolerance.
+- Clinically validated simulation models, review workflow and model version governance.
+- Private local LLM runtime, patient-scoped RAG, evidence citations and model/prompt/tool version registry.
+- MCP server with identity propagation, patient-level authorisation and audit enforcement.
+- Dedicated observability stack: OpenTelemetry collector, Prometheus, Grafana, centralised logs, dashboards and alerting.
+- Security review, threat modelling, penetration testing, disaster recovery exercise and clinical safety/regulatory assessment.
+- Full browser E2E tests across login, registry, FHIR sync, snapshot, scenario and governance flows.
+- SBOM, formal dependency update policy, vulnerability scanning and licence review.
+
+See [Production readiness assessment](PRODUCTION-READINESS.md). The project must use synthetic data only until the required controls and approvals are completed.

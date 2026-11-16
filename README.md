@@ -4,7 +4,7 @@
 
 TWINFixeno is an early-stage, design-driven MVP for creating a longitudinal digital representation of a patient's health journey. It brings together interoperable clinical data, versioned patient-state snapshots, explainable analytics, hypothetical scenario exploration, private local language models and governed Model Context Protocol (MCP) tools.
 
-> **Project status:** MVP foundation now includes Keycloak OIDC, patient-level access grants, HAPI FHIR Patient synchronisation, Observation/Condition/Encounter ingestion, FHIR-backed timeline, immutable snapshot artifacts with SHA-256 provenance, and automated API tests. GitHub Actions has passed 12 tests, including a live HAPI FHIR R4 ingestion test.
+> **Project status:** Integrated synthetic-data MVP release candidate. The web workspace now has functional registry, timeline, simulation, snapshot and administrator governance views; the API supports patient search/creation, patient permissions, persistent scenario runs, audit events and FHIR publication/import. The current Evidence Assistant is deterministic local summarisation, not an LLM. Production readiness is explicitly not claimed; see [Production readiness assessment](docs/PRODUCTION-READINESS.md).
 
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![Status](https://img.shields.io/badge/status-MVP%20in%20development-orange.svg)](#roadmap)
@@ -70,16 +70,17 @@ The initial use case is a synthetic chronic-care patient journey. The MVP is int
 | Capability | MVP scope | Priority |
 |---|---|---:|
 | Identity and access | Login, roles and patient-level authorisation | Implemented for MVP |
-| Patient registry | Create, search and view synthetic patients | P0 |
-| FHIR integration | Patient, Observation, Condition and Encounter import | Implemented for MVP |
+| Patient registry | Search, view and administrator create of synthetic patients | Implemented (synthetic MVP) |
+| FHIR integration | Patient sync, local Observation publication, Observation/Condition/Encounter import | Implemented for MVP |
 | Twin engine | Immutable snapshots with payload hash and source provenance | Implemented for MVP |
 | Clinical timeline | FHIR-backed Observation, Condition and Encounter timeline | Implemented for MVP |
-| Twin visualisation | Patient summary, trends and data completeness | P0 |
-| Simulation studio | Baseline versus clearly labelled hypothetical scenario | P0 |
-| Audit | User, data access, AI and tool invocation events | P0 |
-| Private AI copilot | Local LLM with patient-scoped retrieval and citations | P1 |
-| MCP server | Governed read and simulation tools | P1 |
-| Observability | Structured logs, metrics and distributed traces | P1 |
+| Twin visualisation | Patient summary and latest observations | Basic MVP |
+| Simulation studio | Persisted percentage-delta scenario with explicit assumptions | Implemented (not a clinical model) |
+| Audit | Application events for patient access and key mutations | Basic MVP |
+| Private AI copilot | Local LLM with patient-scoped retrieval and citations | Not implemented |
+| Evidence assistant | Local deterministic context report (no model inference) | Implemented |
+| MCP server | Governed read and simulation tools | Not implemented |
+| Observability | Structured logs, metrics and distributed traces | Not implemented |
 
 ### Intended user journey
 
@@ -449,10 +450,10 @@ The container workflow is the supported quick start. The API currently validates
 
 ### FHIR integration quick check
 
-After signing in, use **Sync to FHIR** on the patient card to create the synthetic Patient resource in HAPI FHIR. The authenticated API endpoints are:
+After signing in, use **Sync FHIR** on the patient workspace. The API upserts the synthetic Patient, publishes the six local demo observations as FHIR Observation resources, then imports patient-scoped Observation, Condition and Encounter resources. The authenticated API endpoints are:
 
 - `GET /api/v1/integrations/fhir/status`
-- `POST /api/v1/patients/{id}/fhir/sync` — upserts Patient and ingests Observation, Condition and Encounter resources.
+- `POST /api/v1/patients/{id}/fhir/sync` — upserts Patient, publishes local observations and ingests Observation, Condition and Encounter resources.
 - `GET /api/v1/patients/{id}/fhir`
 - `GET /api/v1/patients/{id}/timeline`
 
@@ -649,7 +650,7 @@ A production healthcare deployment requires a formal threat model, penetration t
 
 ## Testing and quality
 
-The current API test suite uses Pytest and FastAPI TestClient to exercise patient access isolation, researcher read-only enforcement, administrator grant management, FHIR ingestion and patient-reference filtering, timeline ordering, snapshot hashes and immutability. GitHub Actions starts a real HAPI FHIR R4 container and runs the live Patient/Observation/Condition/Encounter ingestion test as well. Latest CI run: **12 passed** ([run #14](https://github.com/roime81/twinfixeno/actions/runs/43806365853)). Run locally from `services/api` with `pip install -r requirements.txt` followed by `pytest -q`; the live HAPI test is skipped unless `FHIR_INTEGRATION_TESTS=1` and `FHIR_BASE_URL` point to a running server. The broader planned quality strategy includes:
+The Pytest suite covers patient access isolation, role/grant permissions, registry search/create, scenario persistence and formulas, audit events, FHIR ingestion and patient-reference filtering, timeline, snapshot hashes and immutability. The live HAPI test publishes the six local synthetic observations and checks FHIR ingestion. GitHub Actions now runs the API/live-FHIR suite and a Next.js production build. The previously completed API-only run #14 passed 12 tests; the expanded workflow must pass on the current commit before treating the new end-to-end changes as verified. Run locally from `services/api` with `pip install -r requirements.txt` followed by `pytest -q`; the live HAPI test is skipped unless `FHIR_INTEGRATION_TESTS=1` and `FHIR_BASE_URL` point to a running server. The broader planned quality strategy includes:
 
 | Test type | Coverage |
 |---|---|
@@ -668,49 +669,54 @@ Clinical correctness cannot be established by software tests alone. Domain exper
 
 ### Milestone 0 — Repository and design foundation
 - [x] Project name and repository established
-- [x] Initial product README
-- [ ] Product requirements and architecture documents
-- [ ] Design tokens and application shell
+- [x] Product README and architecture description
+- [ ] Separate approved product requirements and design specification documents
+- [x] Responsive application shell and initial design styling
 
 ### Milestone 1 — Platform foundation
-- [x] Next.js application shell
-- [x] FastAPI service
+- [x] Next.js application shell and container build
+- [x] FastAPI service and container build
 - [x] PostgreSQL persistence
-- [ ] Formal database migrations
+- [ ] Formal Alembic database migrations and rollback verification
 - [x] Keycloak authentication (development OIDC and API token validation)
-- [x] Patient-level access grants and role policies
+- [x] Patient-level access grants, effective permission endpoint and admin governance UI
 - [x] APISIX gateway
-- [x] Docker Compose development environment
+- [x] Docker Compose integrated local environment with readiness checks
 
 ### Milestone 2 — Patient and twin
-- [ ] Synthetic patient registry
-- [x] HAPI FHIR service and Patient resource synchronisation
-- [x] FHIR Observation, Condition and Encounter ingestion
-- [x] Twin snapshot payload and source provenance
-- [x] Immutable versioned snapshot artifacts
+- [x] Synthetic patient registry: authorised list, search and admin creation
+- [x] HAPI FHIR Patient synchronisation
+- [x] FHIR Observation publication and Observation/Condition/Encounter ingestion
+- [x] Twin snapshot payload, hash and source provenance
+- [x] Immutable versioned snapshot artifacts and UI inspection
 - [x] FHIR-backed clinical timeline
+- [x] Patient overview and latest observation visualisation
 
 ### Milestone 3 — Simulation
-- [ ] Scenario data model
-- [ ] Deterministic simulation engine
-- [ ] Baseline comparison
-- [ ] Scenario provenance and versioning
-- [ ] Simulation Studio UI
+- [x] Scenario data model and persisted runs
+- [x] Deterministic percentage-delta calculation engine
+- [x] Baseline versus projected value comparison
+- [x] Scenario inputs, formula ID, assumptions and timestamp provenance
+- [x] Simulation Studio UI
+- [ ] Clinically validated physiological models and clinical governance
 
 ### Milestone 4 — Private AI and MCP
-- [ ] Local model runtime
-- [ ] Patient-scoped RAG
-- [ ] Evidence-linked answers
+- [ ] Local model runtime and licence-approved model artifact
+- [ ] Patient-scoped RAG and source citations
+- [ ] Evidence-grounded LLM responses and evaluation/guardrails
 - [ ] MCP server and governed tools
-- [ ] AI and tool-call audit trail
+- [ ] AI, prompt, model and tool-call audit/version management
+- [x] Local deterministic patient context summary (not an LLM)
 
 ### Milestone 5 — Hardening and demonstration
-- [ ] Observability dashboards
-- [x] Automated API integration tests and CI workflow
-- [ ] Broader security and end-to-end tests
-- [ ] Synthetic demo dataset
-- [ ] UI screenshots
-- [ ] Deployment and operator documentation
+- [ ] Dedicated OpenTelemetry / Prometheus / Grafana / centralised logging stack
+- [x] Automated API integration tests and live HAPI FHIR CI workflow
+- [x] Next.js production build in CI
+- [ ] Full browser E2E, security and recovery tests
+- [x] Synthetic seed patient and observations
+- [ ] Approved UI screenshots
+- [x] Local deployment and production-readiness documentation
+- [ ] Production identity, TLS, migrations, backup/restore, security and clinical sign-off
 
 ## Contributing
 

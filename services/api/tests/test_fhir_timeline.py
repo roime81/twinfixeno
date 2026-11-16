@@ -8,9 +8,11 @@ def test_sync_ingests_observation_condition_and_encounter(client, monkeypatch):
     }
     monkeypatch.setattr(fhir, "search_resources", lambda resource_type, patient_id: fixtures[resource_type])
     monkeypatch.setattr(fhir, "upsert_demo_patient", lambda patient: {"created":False,"resource":{"resourceType":"Patient","id":"fhir-1"}})
+    monkeypatch.setattr(fhir, "publish_local_observations", lambda db, patient, fhir_patient_id: 6)
     response = client.post("/api/v1/patients/1/fhir/sync")
     assert response.status_code == 200
     assert response.json()["imported_count"] == 3
+    assert response.json()["published_observation_count"] == 6
     timeline = client.get("/api/v1/patients/1/timeline")
     assert timeline.status_code == 200
     items = timeline.json()["items"]
@@ -29,6 +31,7 @@ def test_resource_with_different_patient_reference_is_not_ingested(client, monke
         {"resourceType":resource_type,"id":"wrong","subject":{"reference":"Patient/another"}}
     ])
     monkeypatch.setattr(fhir, "upsert_demo_patient", lambda patient: {"created":False,"resource":{"resourceType":"Patient","id":"fhir-1"}})
+    monkeypatch.setattr(fhir, "publish_local_observations", lambda db, patient, fhir_patient_id: 6)
     response = client.post("/api/v1/patients/1/fhir/sync")
     assert response.status_code == 200
     assert response.json()["imported_count"] == 0

@@ -1,57 +1,441 @@
 "use client";
-import {useEffect,useRef,useState} from "react";
+
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import Keycloak from "keycloak-js";
-type Patient={id:number;external_id:string;given_name:string;family_name:string;birth_date:string;sex:string};
-type Observation={id:number;display:string;value:number;unit:string;observed_at:string};
-type FhirStatus={available:boolean;fhir_version?:string;software?:string};
-type TimelineItem={resource_type:string;resource_id:string;version_id?:string;title:string;status?:string;effective_at?:string;last_updated?:string};
-const API=process.env.NEXT_PUBLIC_API_BASE_URL||"http://localhost:9080";
-export default function Home(){
- const keycloak=useRef<Keycloak|null>(null);
- const [authenticated,setAuthenticated]=useState(false),[username,setUsername]=useState(""),[canWrite,setCanWrite]=useState(false);
- const [patient,setPatient]=useState<Patient|null>(null),[observations,setObservations]=useState<Observation[]>([]);
- const [snapshot,setSnapshot]=useState("No snapshot created yet"),[snapshotHash,setSnapshotHash]=useState(""),[busy,setBusy]=useState(false),[error,setError]=useState("");
- const [fhirStatus,setFhirStatus]=useState<FhirStatus|null>(null),[fhirMessage,setFhirMessage]=useState("");
- const [timeline,setTimeline]=useState<TimelineItem[]>([]);
- useEffect(()=>{
-  let alive=true;
-  const client=new Keycloak({url:process.env.NEXT_PUBLIC_KEYCLOAK_URL||"http://localhost:8081",realm:process.env.NEXT_PUBLIC_KEYCLOAK_REALM||"twinfixeno",clientId:process.env.NEXT_PUBLIC_KEYCLOAK_CLIENT_ID||"twinfixeno-web"});
-  keycloak.current=client;
-  client.init({onLoad:"login-required",pkceMethod:"S256",checkLoginIframe:false}).then(async ok=>{
-   if(!alive||!ok)return;
-   setAuthenticated(true);setUsername(client.tokenParsed?.preferred_username as string||"Signed in");const roles=(client.tokenParsed as any)?.realm_access?.roles||[];setCanWrite(roles.includes("clinician")||roles.includes("twinfixeno-admin"));
-   client.onTokenExpired=()=>{client.updateToken(30).catch(()=>client.login())};
-   const headers={Authorization:`Bearer ${client.token}`};
-   const response=await fetch(API+"/api/v1/patients",{headers});
-   if(!response.ok)throw new Error("Patient API request failed");
-   const patients:Patient[]=await response.json();
-   if(!patients[0])throw new Error("No synthetic demo patient found");
-   if(!alive)return;setPatient(patients[0]);
-   const [obsResponse,fhirResponse,timelineResponse]=await Promise.all([
-    fetch(API+`/api/v1/patients/${patients[0].id}/observations`,{headers}),
-    fetch(API+"/api/v1/integrations/fhir/status",{headers}),
-    fetch(API+`/api/v1/patients/${patients[0].id}/timeline`,{headers})
-   ]);
-   if(!obsResponse.ok)throw new Error("Observation API request failed");
-   const obs:Observation[]=await obsResponse.json();
-   if(alive){setObservations(obs);if(fhirResponse.ok)setFhirStatus(await fhirResponse.json());if(timelineResponse.ok){const t=await timelineResponse.json();setTimeline(t.items||[])}}
-  }).catch(err=>{if(alive)setError(err?.message||"Authentication or API connection failed")});
-  return ()=>{alive=false};
- },[]);
- async function createSnapshot(){
-  if(!patient||!keycloak.current)return;setBusy(true);
-  try{await keycloak.current.updateToken(30);const r=await fetch(API+`/api/v1/patients/${patient.id}/snapshots`,{method:"POST",headers:{Authorization:`Bearer ${keycloak.current.token}`}});
-   if(!r.ok)throw Error("Snapshot request rejected");const s=await r.json();setSnapshot(`Snapshot #${s.version} · ${new Date(s.created_at).toLocaleString()}`);setSnapshotHash(s.content_sha256||"")
-  }catch{setError("Snapshot creation failed. Check your session and API logs.")}finally{setBusy(false)}
- }
- async function syncFhir(){if(!patient||!keycloak.current)return;setFhirMessage("Synchronising…");try{await keycloak.current.updateToken(30);const response=await fetch(API+`/api/v1/patients/${patient.id}/fhir/sync`,{method:"POST",headers:{Authorization:`Bearer ${keycloak.current.token}`}});if(!response.ok)throw Error("FHIR sync failed");const result=await response.json();const refreshed=await fetch(API+`/api/v1/patients/${patient.id}/timeline`,{headers:{Authorization:`Bearer ${keycloak.current.token}`}});if(refreshed.ok){const data=await refreshed.json();setTimeline(data.items||[])}setFhirMessage(`FHIR Patient ${result.patient_created?"created":"found"} · ${result.imported_count} clinical resources ingested`)}catch{setFhirMessage("FHIR sync failed. Check that HAPI FHIR is ready.")}}
- const value=(name:string)=>observations.find(o=>o.display===name);
- if(!authenticated)return <div className="auth-screen"><div className="auth-card"><div className="brand">twinfixeno</div><h1>Secure clinical workspace</h1><p>Connecting to Keycloak identity service…</p>{error&&<div className="notice">{error}</div>}</div></div>;
- return <div className="shell"><aside className="sidebar"><div className="brand">twinfixeno</div><div className="subbrand">Healthcare Digital Twin</div><nav className="nav"><div className="active">◈ Overview</div><div>◎ Patient registry</div><div>⌁ Clinical timeline</div><div>◇ Simulation studio</div><div>✳ AI copilot <span className="tag">planned</span></div><div>▤ Governance</div></nav><p style={{marginTop:45,fontSize:11,color:"#8da7ae",lineHeight:1.7}}>MVP 0.3.0<br/>Synthetic data environment</p></aside>
- <main className="main"><div className="topline"><div><div className="eyebrow">WORKSPACE / OVERVIEW</div><h1 className="heading">Patient command centre</h1><div className="muted">A longitudinal view of patient health context.</div></div><div className="user-tools"><span className="pill">● {username}</span><button className="secondary-button" onClick={()=>keycloak.current?.logout({redirectUri:window.location.origin})}>Sign out</button></div></div>{error&&<div className="notice">{error}</div>}
- <div className="grid"><div className="card"><div className="label">PATIENT TWINS</div><div className="metric">01</div><div className="muted">Synthetic patient profile</div></div><div className="card"><div className="label">OBSERVATIONS</div><div className="metric">{observations.length.toString().padStart(2,"0")}</div><div className="muted">Structured measurements</div></div><div className="card"><div className="label">TWIN SNAPSHOTS</div><div className="metric">{snapshot.startsWith("Snapshot")?"01":"00"}</div><div className="muted">Versioned patient states</div></div><div className="card"><div className="label">FHIR R4 SERVER</div><div className="metric" style={{fontSize:20}}>{fhirStatus?.available?"Connected":"Checking…"}</div><div className="muted">{fhirStatus?.fhir_version? "FHIR "+fhirStatus.fhir_version:"HAPI FHIR endpoint"}</div></div></div>
- <section className="section"><div className="sectionhead"><h2>Patient digital twin</h2><span className="tag">SYNTHETIC RECORD</span></div><div className="card"><div className="topline"><div className="patient"><div className="avatar">{patient?patient.given_name[0]+patient.family_name[0]:"--"}</div><div><strong>{patient?`${patient.given_name} ${patient.family_name}`:"Loading patient…"}</strong><div className="muted">{patient?patient.external_id+" · "+patient.sex+" · Born "+patient.birth_date:"Fetching demo record"}</div></div></div><div className="action-stack"><button className="secondary-button" onClick={syncFhir} disabled={!patient||!canWrite}>↗ Sync to FHIR</button><button className="button" onClick={createSnapshot} disabled={!patient||busy||!canWrite}>{busy?"Creating…":"＋ Create twin snapshot"}</button></div></div>{fhirMessage&&<div className="notice">{fhirMessage}</div>}<div className="grid" style={{gridTemplateColumns:"repeat(3,1fr)"}}><div><div className="label">HEART RATE</div><div className="metric">{value("Heart rate")?.value??"—"} <small>bpm</small></div></div><div><div className="label">BLOOD PRESSURE</div><div className="metric">{value("Systolic blood pressure")?.value??"—"}<small> / {value("Diastolic blood pressure")?.value??"—"} mmHg</small></div></div><div><div className="label">BODY WEIGHT</div><div className="metric">{value("Body weight")?.value??"—"} <small>kg</small></div></div></div></div></section>
- <section className="section"><div className="sectionhead"><h2>Latest observations</h2><span className="muted">Synthetic seed dataset</span></div><div className="card">{observations.map(o=><div className="row" key={o.id}><div><strong>{o.display}</strong><div className="label">{new Date(o.observed_at).toLocaleDateString()}</div></div><strong>{o.value} {o.unit}</strong></div>)}</div></section>
- <section className="section"><div className="sectionhead"><h2>Clinical timeline</h2><span className="muted">{timeline.length} FHIR resources · Observation / Condition / Encounter</span></div><div className="card">{timeline.length===0?<div className="muted">No FHIR clinical resources imported yet. Use “Sync to FHIR” to import resources associated with this patient.</div>:timeline.map((item,index)=><div className="row" key={item.resource_type+item.resource_id+index}><div><div><strong>{item.title}</strong> <span className="tag">{item.resource_type}</span></div><div className="muted">{item.effective_at?new Date(item.effective_at).toLocaleString():"Date not recorded"} · {item.status||"status unknown"}</div></div><span className="label">v{item.version_id||"—"}</span></div>)}</div></section>
- <section className="section"><div className="sectionhead"><h2>Twin state</h2><span className="tag">VERSIONED</span></div><div className="card"><div className="row"><div><strong>Latest snapshot</strong><div className="muted">{snapshot}</div>{snapshotHash&&<div className="label">SHA-256 · {snapshotHash.slice(0,24)}…</div>}</div><span className="tag">Immutable</span></div><div className="notice">Synthetic data and descriptive calculations only. This prototype is not a medical device and must not be used for diagnosis or treatment.</div></div></section></main></div>;
+
+type Patient = { id: number; external_id: string; given_name: string; family_name: string; birth_date: string; sex: string };
+type Observation = { id: number; code: string; display: string; value: number; unit: string; observed_at: string };
+type FhirStatus = { available: boolean; fhir_version?: string; software?: string; detail?: string };
+type TimelineItem = { resource_type: string; resource_id: string; version_id?: string; title: string; status?: string; effective_at?: string; last_updated?: string; source?: string };
+type Snapshot = { id: number; version: number; summary: string; created_at: string; content_sha256?: string };
+type Grant = { id: number; username?: string; user_subject?: string; access_level: "read" | "write" };
+type AuditEvent = { id: number; actor_username?: string; action: string; patient_id?: number; resource_type?: string; resource_id?: string; created_at: string };
+type Simulation = { id: number; scenario_name: string; formula_id: string; inputs: Record<string, unknown>; result: { baseline_value: number; projected_value: number; absolute_delta: number; unit: string; label: string; assumptions: string[] }; created_at: string };
+type Permissions = { can_read: boolean; can_write: boolean; can_manage_access: boolean };
+type View = "overview" | "registry" | "timeline" | "simulation" | "copilot" | "snapshots" | "governance";
+
+const API = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:9080";
+const VIEWS: { id: View; label: string; icon: string }[] = [
+  { id: "overview", label: "Command centre", icon: "◈" },
+  { id: "registry", label: "Patient registry", icon: "◎" },
+  { id: "timeline", label: "Clinical timeline", icon: "⌁" },
+  { id: "simulation", label: "Simulation studio", icon: "◇" },
+  { id: "copilot", label: "Evidence assistant", icon: "✳" },
+  { id: "snapshots", label: "Twin snapshots", icon: "▤" },
+  { id: "governance", label: "Governance & audit", icon: "⚑" },
+];
+
+function formatDate(value?: string) {
+  if (!value) return "Not recorded";
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleString();
+}
+
+function displayPatient(patient?: Patient | null) {
+  return patient ? patient.given_name + " " + patient.family_name : "No patient selected";
+}
+
+export default function Home() {
+  const keycloak = useRef<Keycloak | null>(null);
+  const [authenticated, setAuthenticated] = useState(false);
+  const [username, setUsername] = useState("");
+  const [roles, setRoles] = useState<string[]>([]);
+  const [view, setView] = useState<View>("overview");
+  const [patients, setPatients] = useState<Patient[]>([]);
+  const [selectedPatientId, setSelectedPatientId] = useState<number | null>(null);
+  const [observations, setObservations] = useState<Observation[]>([]);
+  const [timeline, setTimeline] = useState<TimelineItem[]>([]);
+  const [snapshots, setSnapshots] = useState<Snapshot[]>([]);
+  const [simulations, setSimulations] = useState<Simulation[]>([]);
+  const [permissions, setPermissions] = useState<Permissions>({ can_read: false, can_write: false, can_manage_access: false });
+  const [fhirStatus, setFhirStatus] = useState<FhirStatus | null>(null);
+  const [grants, setGrants] = useState<Grant[]>([]);
+  const [auditEvents, setAuditEvents] = useState<AuditEvent[]>([]);
+  const [contextReport, setContextReport] = useState<any>(null);
+  const [selectedSnapshot, setSelectedSnapshot] = useState<any>(null);
+  const [registrySearch, setRegistrySearch] = useState("");
+  const [scenarioName, setScenarioName] = useState("Illustrative scenario");
+  const [baselineObservationId, setBaselineObservationId] = useState("");
+  const [changePercent, setChangePercent] = useState(10);
+  const [grantUsername, setGrantUsername] = useState("");
+  const [grantSubject, setGrantSubject] = useState("");
+  const [grantLevel, setGrantLevel] = useState<"read" | "write">("read");
+  const [newPatient, setNewPatient] = useState({ external_id: "SYN-0002", given_name: "", family_name: "", birth_date: "1980-01-01", sex: "unknown" });
+  const [busy, setBusy] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [notice, setNotice] = useState("");
+  const [error, setError] = useState("");
+
+  const patient = useMemo(() => patients.find(item => item.id === selectedPatientId) || null, [patients, selectedPatientId]);
+  const canAdmin = roles.includes("twinfixeno-admin");
+
+  async function api<T = any>(path: string, init: RequestInit = {}): Promise<T> {
+    const client = keycloak.current;
+    if (!client?.token) throw new Error("Your login session has expired. Sign in again.");
+    await client.updateToken(30);
+    const headers = new Headers(init.headers || {});
+    headers.set("Authorization", "Bearer " + client.token);
+    if (init.body && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
+    const response = await fetch(API + path, { ...init, headers });
+    const raw = await response.text();
+    let data: any = null;
+    try { data = raw ? JSON.parse(raw) : null; } catch { data = raw; }
+    if (!response.ok) {
+      const detail = data && typeof data === "object" && data.detail ? data.detail : response.statusText;
+      throw new Error(String(detail || "Request failed") + " (" + response.status + ")");
+    }
+    return data as T;
+  }
+
+  async function loadPatient(patientId: number) {
+    setLoading(true);
+    setError("");
+    try {
+      const [patientData, obs, events, snapshotItems, simItems, perms] = await Promise.all([
+        api<Patient>("/api/v1/patients/" + patientId),
+        api<Observation[]>("/api/v1/patients/" + patientId + "/observations"),
+        api<any>("/api/v1/patients/" + patientId + "/timeline"),
+        api<Snapshot[]>("/api/v1/patients/" + patientId + "/snapshots"),
+        api<Simulation[]>("/api/v1/patients/" + patientId + "/simulations"),
+        api<Permissions>("/api/v1/patients/" + patientId + "/permissions"),
+      ]);
+      setPatients(current => current.map(item => item.id === patientData.id ? patientData : item));
+      setObservations(obs);
+      setTimeline(events.items || []);
+      setSnapshots(snapshotItems);
+      setSimulations(simItems);
+      setPermissions(perms);
+      setBaselineObservationId(obs[0] ? String(obs[0].id) : "");
+      setContextReport(null);
+      setSelectedSnapshot(null);
+    } catch (err: any) {
+      setError(err?.message || "Unable to load the selected patient.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function loadGovernance(patientId: number) {
+    try {
+      const [grantItems, events] = await Promise.all([
+        api<Grant[]>("/api/v1/patients/" + patientId + "/access-grants"),
+        api<AuditEvent[]>("/api/v1/audit/events?limit=100"),
+      ]);
+      setGrants(grantItems);
+      setAuditEvents(events);
+    } catch (err: any) {
+      setError(err?.message || "Unable to load governance information.");
+    }
+  }
+
+  useEffect(() => {
+    let alive = true;
+    const client = new Keycloak({
+      url: process.env.NEXT_PUBLIC_KEYCLOAK_URL || "http://localhost:8081",
+      realm: process.env.NEXT_PUBLIC_KEYCLOAK_REALM || "twinfixeno",
+      clientId: process.env.NEXT_PUBLIC_KEYCLOAK_CLIENT_ID || "twinfixeno-web",
+    });
+    keycloak.current = client;
+    client.init({ onLoad: "login-required", pkceMethod: "S256", checkLoginIframe: false })
+      .then(async authenticatedNow => {
+        if (!alive || !authenticatedNow) return;
+        setAuthenticated(true);
+        setUsername(String(client.tokenParsed?.preferred_username || "Signed in"));
+        const tokenRoles = (client.tokenParsed as any)?.realm_access?.roles || [];
+        setRoles(tokenRoles);
+        client.onTokenExpired = () => { client.updateToken(30).catch(() => client.login()); };
+        const [patientItems, fhir] = await Promise.all([
+          api<Patient[]>("/api/v1/patients"),
+          api<FhirStatus>("/api/v1/integrations/fhir/status"),
+        ]);
+        if (!alive) return;
+        setPatients(patientItems);
+        setFhirStatus(fhir);
+        if (patientItems.length) {
+          setSelectedPatientId(patientItems[0].id);
+          await loadPatient(patientItems[0].id);
+        } else {
+          setLoading(false);
+        }
+      })
+      .catch((err: any) => {
+        if (alive) { setError(err?.message || "Authentication or API connection failed."); setLoading(false); }
+      });
+    return () => { alive = false; };
+    // Authentication is deliberately initialised once per browser session.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (authenticated && view === "governance" && selectedPatientId && canAdmin) {
+      void loadGovernance(selectedPatientId);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authenticated, view, selectedPatientId, canAdmin]);
+
+  async function selectPatient(id: number) {
+    setSelectedPatientId(id);
+    await loadPatient(id);
+    setView("overview");
+  }
+
+  async function syncFhir() {
+    if (!patient || !permissions.can_write) return;
+    setBusy(true); setNotice(""); setError("");
+    try {
+      const result = await api<any>("/api/v1/patients/" + patient.id + "/fhir/sync", { method: "POST" });
+      setNotice("FHIR sync completed. " + result.published_observation_count + " local observations published; " + result.imported_count + " resources imported.");
+      const status = await api<FhirStatus>("/api/v1/integrations/fhir/status");
+      setFhirStatus(status);
+      await loadPatient(patient.id);
+    } catch (err: any) { setError(err?.message || "FHIR sync failed."); }
+    finally { setBusy(false); }
+  }
+
+  async function createSnapshot() {
+    if (!patient || !permissions.can_write) return;
+    setBusy(true); setError(""); setNotice("");
+    try {
+      const result = await api<any>("/api/v1/patients/" + patient.id + "/snapshots", { method: "POST" });
+      setNotice("Snapshot v" + result.version + " created. SHA-256: " + result.content_sha256);
+      const items = await api<Snapshot[]>("/api/v1/patients/" + patient.id + "/snapshots");
+      setSnapshots(items);
+    } catch (err: any) { setError(err?.message || "Snapshot creation failed."); }
+    finally { setBusy(false); }
+  }
+
+  async function openSnapshot(item: Snapshot) {
+    if (!patient) return;
+    setBusy(true); setError("");
+    try {
+      const detail = await api<any>("/api/v1/patients/" + patient.id + "/snapshots/" + item.id);
+      setSelectedSnapshot(detail);
+    } catch (err: any) { setError(err?.message || "Unable to load snapshot."); }
+    finally { setBusy(false); }
+  }
+
+  async function createSimulation(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!patient || !permissions.can_write || !baselineObservationId) return;
+    setBusy(true); setError(""); setNotice("");
+    try {
+      const result = await api<Simulation>("/api/v1/patients/" + patient.id + "/simulations", {
+        method: "POST",
+        body: JSON.stringify({ scenario_name: scenarioName, baseline_observation_id: Number(baselineObservationId), change_percent: Number(changePercent) }),
+      });
+      setSimulations(current => [result, ...current]);
+      setNotice("Hypothetical scenario saved as run #" + result.id + ".");
+    } catch (err: any) { setError(err?.message || "Simulation failed."); }
+    finally { setBusy(false); }
+  }
+
+  async function createPatient(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setBusy(true); setError(""); setNotice("");
+    try {
+      const created = await api<Patient>("/api/v1/patients", { method: "POST", body: JSON.stringify(newPatient) });
+      const updated = await api<Patient[]>("/api/v1/patients");
+      setPatients(updated);
+      setNotice("Synthetic patient " + created.external_id + " created.");
+      setNewPatient(current => ({ ...current, external_id: "SYN-" + String(Number(current.external_id.replace("SYN-", "")) + 1).padStart(4, "0"), given_name: "", family_name: "" }));
+      await selectPatient(created.id);
+    } catch (err: any) { setError(err?.message || "Patient creation failed."); }
+    finally { setBusy(false); }
+  }
+
+  async function saveGrant(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!patient) return;
+    setBusy(true); setError(""); setNotice("");
+    try {
+      await api("/api/v1/patients/" + patient.id + "/access-grants", {
+        method: "POST",
+        body: JSON.stringify({ username: grantUsername || null, user_subject: grantSubject || null, access_level: grantLevel }),
+      });
+      setGrantUsername(""); setGrantSubject("");
+      await loadGovernance(patient.id);
+      setNotice("Patient access grant saved.");
+    } catch (err: any) { setError(err?.message || "Unable to save access grant."); }
+    finally { setBusy(false); }
+  }
+
+  async function revokeGrant(grantId: number) {
+    if (!patient) return;
+    setBusy(true); setError("");
+    try {
+      await api("/api/v1/patients/" + patient.id + "/access-grants/" + grantId, { method: "DELETE" });
+      await loadGovernance(patient.id);
+      setNotice("Access grant revoked.");
+    } catch (err: any) { setError(err?.message || "Unable to revoke access grant."); }
+    finally { setBusy(false); }
+  }
+
+  async function generateContext() {
+    if (!patient) return;
+    setBusy(true); setError("");
+    try {
+      const report = await api<any>("/api/v1/patients/" + patient.id + "/insights");
+      setContextReport(report);
+    } catch (err: any) { setError(err?.message || "Unable to create local context report."); }
+    finally { setBusy(false); }
+  }
+
+  const filteredPatients = patients.filter(item => {
+    const query = registrySearch.trim().toLowerCase();
+    return !query || [item.external_id, item.given_name, item.family_name].some(value => value.toLowerCase().includes(query));
+  });
+  const latest = (name: string) => observations.find(item => item.display === name);
+  const vitalCards = [
+    { label: "Heart rate", value: latest("Heart rate") },
+    { label: "Blood pressure", value: latest("Systolic blood pressure"), suffix: " / " + (latest("Diastolic blood pressure")?.value ?? "—") + " mmHg" },
+    { label: "Body weight", value: latest("Body weight") },
+    { label: "Body temperature", value: latest("Body temperature") },
+  ];
+  const selectedBaseline = observations.find(item => item.id === Number(baselineObservationId));
+  const projectedValue = selectedBaseline ? Number((selectedBaseline.value * (1 + changePercent / 100)).toFixed(3)) : null;
+
+  if (!authenticated) {
+    return <div className="auth-screen"><div className="auth-card"><div className="brand">twinfixeno</div><h1>Secure clinical workspace</h1><p>Connecting to the identity service…</p>{error && <div className="notice error">{error}</div>}</div></div>;
+  }
+
+  return (
+    <div className="app-shell">
+      <aside className="sidebar">
+        <div className="brand">twinfixeno</div>
+        <div className="subbrand">Healthcare Digital Twin</div>
+        <div className="env-chip"><span className="status-dot" /> Synthetic data workspace</div>
+        <nav className="nav-list" aria-label="Main navigation">
+          {VIEWS.map(item => (
+            <button key={item.id} className={view === item.id ? "nav-item active" : "nav-item"} onClick={() => setView(item.id)}>
+              <span className="nav-icon">{item.icon}</span><span>{item.label}</span>
+            </button>
+          ))}
+        </nav>
+        <div className="sidebar-footer"><strong>MVP 0.4.0</strong><span>FHIR R4 · OIDC · Audit</span><span>Research / demonstration only</span></div>
+      </aside>
+
+      <main className="main-content">
+        <header className="topbar">
+          <div className="topbar-context"><span className="eyebrow">WORKSPACE / {view.toUpperCase()}</span><h1>{VIEWS.find(item => item.id === view)?.label}</h1><p>{patient ? displayPatient(patient) + " · " + patient.external_id : "No patient selected"}</p></div>
+          <div className="topbar-actions">
+            {patients.length > 0 && <label className="patient-switch"><span>ACTIVE TWIN</span><select value={selectedPatientId ?? ""} onChange={event => void selectPatient(Number(event.target.value))}>{patients.map(item => <option value={item.id} key={item.id}>{item.external_id} · {displayPatient(item)}</option>)}</select></label>}
+            <div className="user-chip"><span className="user-avatar">{username.slice(0, 1).toUpperCase()}</span><span>{username}</span></div>
+            <button className="button button-quiet" onClick={() => keycloak.current?.logout({ redirectUri: window.location.origin })}>Sign out</button>
+          </div>
+        </header>
+
+        {error && <div className="notice error" role="alert">{error}<button onClick={() => setError("")} aria-label="Dismiss">×</button></div>}
+        {notice && <div className="notice success" role="status">{notice}<button onClick={() => setNotice("")} aria-label="Dismiss">×</button></div>}
+        {loading && <div className="loading-line"><span /> Loading authorised patient data…</div>}
+
+        {!loading && patients.length === 0 && (
+          <section className="panel empty-state"><div className="empty-icon">◎</div><h2>No patient records are assigned to this account</h2><p>Ask a platform administrator to grant access to a synthetic patient. Administrators can create demo patients in the registry.</p>{canAdmin && <button className="button" onClick={() => setView("registry")}>Open patient registry</button>}</section>
+        )}
+
+        {patient && view === "overview" && (
+          <>
+            <section className="welcome-row"><div><div className="eyebrow">PATIENT DIGITAL TWIN</div><h2>{displayPatient(patient)}</h2><p>{patient.external_id} · {patient.sex} · Date of birth {patient.birth_date}</p></div><div className="action-row"><button className="button button-secondary" disabled={!permissions.can_write || busy} onClick={() => void syncFhir()}>↗ Sync FHIR</button><button className="button" disabled={!permissions.can_write || busy} onClick={() => void createSnapshot()}>＋ Create snapshot</button></div></section>
+            <section className="stat-grid">
+              <div className="stat-card"><span>AUTHORISED PATIENTS</span><strong>{patients.length.toString().padStart(2, "0")}</strong><small>Visible to your account</small></div>
+              <div className="stat-card"><span>OBSERVATIONS</span><strong>{observations.length.toString().padStart(2, "0")}</strong><small>Structured measurements</small></div>
+              <div className="stat-card"><span>TWIN SNAPSHOTS</span><strong>{snapshots.length.toString().padStart(2, "0")}</strong><small>Immutable versions</small></div>
+              <div className="stat-card"><span>FHIR R4</span><strong className={fhirStatus?.available ? "status-good" : "status-bad"}>{fhirStatus?.available ? "Online" : "Offline"}</strong><small>{fhirStatus?.fhir_version ? "FHIR " + fhirStatus.fhir_version : "HAPI FHIR endpoint"}</small></div>
+            </section>
+            <section className="content-grid">
+              <div className="panel panel-wide"><div className="panel-heading"><div><span className="eyebrow">LATEST MEASUREMENTS</span><h3>Patient observations</h3></div><button className="text-button" onClick={() => setView("timeline")}>Open timeline →</button></div>
+                <div className="vital-grid">{vitalCards.map(card => <div className="vital-card" key={card.label}><span>{card.label}</span><strong>{card.value ? card.value.value : "—"}<small>{card.suffix || (card.value ? " " + card.value.unit : "")}</small></strong><em>{card.value ? formatDate(card.value.observed_at) : "No data"}</em></div>)}</div>
+                <div className="table-wrap"><table><thead><tr><th>Observation</th><th>Value</th><th>Recorded</th></tr></thead><tbody>{observations.slice(0, 6).map(item => <tr key={item.id}><td><strong>{item.display}</strong><small>{item.code}</small></td><td>{item.value} {item.unit}</td><td>{formatDate(item.observed_at)}</td></tr>)}</tbody></table></div>
+              </div>
+              <div className="panel"><div className="panel-heading"><div><span className="eyebrow">INTEGRATION HEALTH</span><h3>FHIR connection</h3></div><span className={fhirStatus?.available ? "state-pill good" : "state-pill bad"}>{fhirStatus?.available ? "Connected" : "Unavailable"}</span></div>
+                <p className="panel-copy">{fhirStatus?.software || "HAPI FHIR"} · {fhirStatus?.fhir_version || "FHIR R4"}</p><div className="info-row"><span>Clinical resources</span><strong>{timeline.length}</strong></div><div className="info-row"><span>Published observations</span><strong>{observations.length}</strong></div><div className="info-row"><span>Latest sync status</span><strong>{fhirStatus?.available ? "Ready" : "Check service"}</strong></div><button className="button button-full" disabled={!permissions.can_write || busy || !fhirStatus?.available} onClick={() => void syncFhir()}>Synchronise patient data</button>
+              </div>
+            </section>
+            <section className="panel"><div className="panel-heading"><div><span className="eyebrow">TWIN STATE</span><h3>Snapshot history</h3></div><button className="text-button" onClick={() => setView("snapshots")}>View all →</button></div>
+              {snapshots.length === 0 ? <p className="muted">No snapshots yet. Create a snapshot to capture the current patient state and provenance.</p> : snapshots.slice(0, 3).map(item => <div className="list-row" key={item.id}><div><strong>Snapshot v{item.version}</strong><small>{formatDate(item.created_at)} · {item.summary}</small></div><button className="button button-quiet" onClick={() => void openSnapshot(item)}>Inspect</button></div>)}
+            </section>
+          </>
+        )}
+
+        {!loading && view === "registry" && (
+          <section className="panel">
+            <div className="panel-heading"><div><span className="eyebrow">PATIENT MANAGEMENT</span><h3>Authorised patient registry</h3><p className="panel-copy">Only synthetic patients granted to your identity are listed.</p></div><span className="state-pill">{patients.length} record(s)</span></div>
+            <input className="search-input" value={registrySearch} onChange={event => setRegistrySearch(event.target.value)} placeholder="Search patient ID, given name or family name…" />
+            <div className="table-wrap"><table><thead><tr><th>Patient</th><th>Identifier</th><th>Date of birth</th><th>Sex</th><th>Access</th><th /></tr></thead><tbody>
+              {filteredPatients.map(item => <tr key={item.id}><td><strong>{displayPatient(item)}</strong></td><td>{item.external_id}</td><td>{item.birth_date}</td><td>{item.sex}</td><td><span className="state-pill">{item.id === selectedPatientId ? (permissions.can_write ? "Read / write" : "Read only") : "Granted"}</span></td><td><button className="text-button" onClick={() => void selectPatient(item.id)}>Open twin →</button></td></tr>)}
+              {filteredPatients.length === 0 && <tr><td colSpan={6}>No matching patient records.</td></tr>}
+            </tbody></table></div>
+            {canAdmin && <div className="subpanel"><h4>Create synthetic patient</h4><form className="form-grid" onSubmit={createPatient}>
+              <label>Patient ID<input required value={newPatient.external_id} onChange={event => setNewPatient({ ...newPatient, external_id: event.target.value })} /></label>
+              <label>Given name<input required value={newPatient.given_name} onChange={event => setNewPatient({ ...newPatient, given_name: event.target.value })} /></label>
+              <label>Family name<input required value={newPatient.family_name} onChange={event => setNewPatient({ ...newPatient, family_name: event.target.value })} /></label>
+              <label>Date of birth<input required type="date" value={newPatient.birth_date} onChange={event => setNewPatient({ ...newPatient, birth_date: event.target.value })} /></label>
+              <label>Sex<select value={newPatient.sex} onChange={event => setNewPatient({ ...newPatient, sex: event.target.value })}><option value="unknown">Unknown</option><option value="female">Female</option><option value="male">Male</option></select></label>
+              <button className="button" disabled={busy}>Create synthetic patient</button>
+            </form></div>}
+          </section>
+        )}
+
+        {!loading && patient && view === "timeline" && (
+          <section className="panel">
+            <div className="panel-heading"><div><span className="eyebrow">LONGITUDINAL RECORD</span><h3>Clinical timeline</h3><p className="panel-copy">FHIR resources ordered by effective time. Source resource IDs and versions are retained.</p></div><button className="button button-secondary" disabled={!permissions.can_write || busy || !fhirStatus?.available} onClick={() => void syncFhir()}>Sync from FHIR</button></div>
+            {timeline.length === 0 ? <div className="empty-inline"><strong>No FHIR clinical resources imported yet.</strong><p>Use Sync from FHIR to publish the local demo observations and import available Observation, Condition and Encounter resources.</p></div> :
+              <div className="timeline-list">{timeline.map((item, index) => <div className="timeline-entry" key={item.resource_type + item.resource_id + index}><div className="timeline-marker" /><div className="timeline-body"><div className="timeline-title"><strong>{item.title}</strong><span className="type-pill">{item.resource_type}</span><span className="muted">v{item.version_id || "—"}</span></div><p>{formatDate(item.effective_at || item.last_updated)} · {item.status || "Status not supplied"}</p><small>FHIR ID: {item.resource_id} · Source: {item.source || "HAPI FHIR"}</small></div></div>)}</div>}
+          </section>
+        )}
+
+        {!loading && patient && view === "simulation" && (
+          <section className="panel">
+            <div className="panel-heading"><div><span className="eyebrow">DETERMINISTIC ENGINE · PERCENTAGE-DELTA-V1</span><h3>Simulation studio</h3><p className="panel-copy">Create a saved, reproducible arithmetic scenario against one observed value.</p></div><span className="state-pill warning">Hypothetical only</span></div>
+            <div className="simulation-layout"><form className="simulation-form" onSubmit={createSimulation}>
+              <label>Scenario name<input required minLength={3} maxLength={120} value={scenarioName} onChange={event => setScenarioName(event.target.value)} /></label>
+              <label>Baseline observation<select required value={baselineObservationId} onChange={event => setBaselineObservationId(event.target.value)}>{observations.map(item => <option key={item.id} value={item.id}>{item.display} · {item.value} {item.unit}</option>)}</select></label>
+              <label>Hypothetical change <strong>{changePercent > 0 ? "+" : ""}{changePercent}%</strong><input type="range" min={-50} max={50} step={1} value={changePercent} onChange={event => setChangePercent(Number(event.target.value))} /></label>
+              <p className="muted">A bounded arithmetic adjustment (−50% to +50%). It does not model physiology, treatment, interactions or causal effects.</p>
+              <button className="button" disabled={!permissions.can_write || busy || !observations.length}>Save scenario run</button>
+              {!permissions.can_write && <small className="muted">Your account has read-only access to this patient.</small>}
+            </form>
+              <div className="scenario-preview"><span className="eyebrow">LIVE SCENARIO PREVIEW</span><div className="scenario-values"><div><small>BASELINE</small><strong>{selectedBaseline ? selectedBaseline.value : "—"}</strong><em>{selectedBaseline?.unit || ""}</em></div><span>→</span><div><small>PROJECTED VALUE</small><strong>{projectedValue ?? "—"}</strong><em>{selectedBaseline?.unit || ""}</em></div></div><div className="scenario-delta">{changePercent > 0 ? "+" : ""}{changePercent}% applied to selected baseline</div><div className="warning-block">HYPOTHETICAL SCENARIO — NOT A CLINICAL PREDICTION</div><small>Formula: projected = baseline × (1 + change / 100)</small></div>
+            </div>
+            <div className="panel-heading history-heading"><div><span className="eyebrow">PERSISTED RUNS</span><h3>Scenario history</h3></div></div>
+            {simulations.length === 0 ? <p className="muted">No scenario runs have been saved.</p> : simulations.map(item => <div className="list-row" key={item.id}><div><strong>{item.scenario_name}</strong><small>{formatDate(item.created_at)} · {item.result.baseline_value} → {item.result.projected_value} {item.result.unit}</small></div><span className="type-pill">{item.formula_id}</span></div>)}
+          </section>
+        )}
+
+        {!loading && patient && view === "copilot" && (
+          <section className="panel">
+            <div className="panel-heading"><div><span className="eyebrow">LOCAL CONTEXT SERVICE</span><h3>Evidence assistant</h3><p className="panel-copy">A safe, deterministic summary of data already stored for this patient.</p></div><span className="state-pill warning">No LLM connected</span></div>
+            <div className="assistant-banner"><div className="assistant-icon">✳</div><div><strong>Private by default</strong><p>This release does not send patient data to an external AI provider. The report below is generated by a transparent local summary function, not a generative model.</p></div></div>
+            <button className="button" disabled={busy} onClick={() => void generateContext()}>Generate evidence context report</button>
+            {contextReport && <div className="context-report"><div className="info-row"><span>Engine</span><strong>{contextReport.engine}</strong></div><div className="info-row"><span>Model</span><strong>Not configured</strong></div><div className="info-row"><span>Observations / FHIR resources</span><strong>{contextReport.observation_count} / {contextReport.fhir_resource_count}</strong></div>
+              <h4>Available observations</h4>{contextReport.observations.map((item: any) => <div className="list-row" key={item.display}><div><strong>{item.display}</strong><small>Latest recorded {item.latest_value} {item.unit} · {formatDate(item.observed_at)}</small><small>Range in loaded records: {item.min_value}–{item.max_value} {item.unit} · {item.record_count} record(s)</small></div></div>)}
+              <h4>FHIR resources</h4><div className="info-row"><span>Observations</span><strong>{contextReport.resource_types.Observation}</strong></div><div className="info-row"><span>Conditions</span><strong>{contextReport.resource_types.Condition}</strong></div><div className="info-row"><span>Encounters</span><strong>{contextReport.resource_types.Encounter}</strong></div>
+              <h4>Limitations</h4><ul>{contextReport.limitations.map((item: string) => <li key={item}>{item}</li>)}</ul>
+            </div>}
+          </section>
+        )}
+
+        {!loading && patient && view === "snapshots" && (
+          <section className="panel">
+            <div className="panel-heading"><div><span className="eyebrow">APPEND-ONLY PATIENT STATE</span><h3>Twin snapshot versions</h3><p className="panel-copy">Each snapshot captures a canonical payload, SHA-256 checksum and source provenance.</p></div><button className="button" disabled={!permissions.can_write || busy} onClick={() => void createSnapshot()}>＋ Create new version</button></div>
+            {snapshots.length === 0 ? <div className="empty-inline">There are no snapshot versions yet.</div> : snapshots.map(item => <div className="snapshot-card" key={item.id}><div className="snapshot-top"><div><strong>Snapshot v{item.version}</strong><p>{formatDate(item.created_at)} · {item.summary}</p></div><button className="button button-secondary" disabled={busy} onClick={() => void openSnapshot(item)}>Inspect artifact</button></div><code>{item.content_sha256 || "No checksum available"}</code></div>)}
+            {selectedSnapshot && <div className="snapshot-detail"><div className="panel-heading"><div><span className="eyebrow">ARTIFACT INSPECTION</span><h3>Snapshot v{selectedSnapshot.version}</h3></div><span className={selectedSnapshot.integrity_verified ? "state-pill good" : "state-pill bad"}>{selectedSnapshot.integrity_verified ? "Checksum verified" : "Integrity check failed"}</span></div><p className="muted">SHA-256: {selectedSnapshot.content_sha256}</p><h4>Source provenance</h4><pre>{JSON.stringify(selectedSnapshot.provenance, null, 2)}</pre><h4>Snapshot payload</h4><pre>{JSON.stringify(selectedSnapshot.payload, null, 2)}</pre></div>}
+          </section>
+        )}
+
+        {!loading && patient && view === "governance" && (
+          <section className="panel">
+            {!permissions.can_manage_access ? <div className="empty-state"><h3>Administrator access required</h3><p>Patient access grants and platform audit history are restricted to the twinfixeno-admin role.</p></div> : <>
+              <div className="panel-heading"><div><span className="eyebrow">ACCESS CONTROL</span><h3>Patient access grants</h3><p className="panel-copy">Grant access using a Keycloak username or immutable subject ID.</p></div><span className="state-pill good">Administrator</span></div>
+              <form className="grant-form" onSubmit={saveGrant}><label>Keycloak username<input value={grantUsername} onChange={event => setGrantUsername(event.target.value)} placeholder="clinician.username" /></label><label>Keycloak subject ID<input value={grantSubject} onChange={event => setGrantSubject(event.target.value)} placeholder="Optional subject UUID" /></label><label>Access level<select value={grantLevel} onChange={event => setGrantLevel(event.target.value as "read" | "write")}><option value="read">Read only</option><option value="write">Read and write</option></select></label><button className="button" disabled={busy || (!grantUsername.trim() && !grantSubject.trim())}>Save grant</button></form>
+              {grants.map(item => <div className="list-row" key={item.id}><div><strong>{item.username || item.user_subject}</strong><small>{item.user_subject || "No subject binding"} · {item.access_level} access</small></div><button className="button button-danger" disabled={busy} onClick={() => void revokeGrant(item.id)}>Revoke</button></div>)}
+              <div className="panel-heading history-heading"><div><span className="eyebrow">APPEND-ONLY APPLICATION EVENTS</span><h3>Recent audit activity</h3></div><span className="state-pill">{auditEvents.length} events</span></div>
+              <div className="table-wrap"><table><thead><tr><th>Timestamp</th><th>Actor</th><th>Action</th><th>Resource</th></tr></thead><tbody>{auditEvents.map(item => <tr key={item.id}><td>{formatDate(item.created_at)}</td><td>{item.actor_username || "Unknown"}</td><td>{item.action}</td><td>{item.resource_type || "Patient"} {item.resource_id || item.patient_id || ""}</td></tr>)}{auditEvents.length === 0 && <tr><td colSpan={4}>No audit events recorded.</td></tr>}</tbody></table></div>
+            </>}
+          </section>
+        )}
+
+        <footer className="page-footer"><span>twinfixeno · Synthetic-data environment</span><span>Not a medical device · Not for diagnosis or treatment</span></footer>
+      </main>
+    </div>
+  );
 }

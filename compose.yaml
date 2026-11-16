@@ -1,19 +1,23 @@
 services:
   postgres:
     image: postgres:16-alpine
+    restart: unless-stopped
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-twinfixeno}
       POSTGRES_USER: ${POSTGRES_USER:-twinfixeno}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-local-development-only}
-    volumes: [postgres_data:/var/lib/postgresql/data]
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-twinfixeno} -d ${POSTGRES_DB:-twinfixeno}"]
       interval: 5s
       timeout: 5s
-      retries: 10
+      retries: 15
     networks: [internal]
+
   keycloak:
     image: quay.io/keycloak/keycloak:26.1.4
+    restart: unless-stopped
     command: ["start-dev", "--import-realm", "--http-port=8080"]
     environment:
       KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_ADMIN:-admin}
@@ -21,47 +25,103 @@ services:
       KC_HEALTH_ENABLED: "true"
     volumes:
       - ./infrastructure/keycloak/realm-twinfixeno.json:/opt/keycloak/data/import/realm-twinfixeno.json:ro
-    ports: ["8081:8080"]
+      - keycloak_data:/opt/keycloak/data/h2
+    ports:
+      - "8081:8080"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:9000/health/ready >/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 45s
+    depends_on:
+      postgres:
+        condition: service_healthy
     networks: [internal]
+
   fhir:
     image: hapiproject/hapi:v7.4.0
-    ports: ["8090:8080"]
+    restart: unless-stopped
+    ports:
+      - "8090:8080"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8080/fhir/metadata >/dev/null || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 30
+      start_period: 90s
     networks: [internal]
+
   api:
-    build: ./services/api
+    build:
+      context: ./services/api
+    restart: unless-stopped
     environment:
+      APP_ENV: ${APP_ENV:-development}
       DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://twinfixeno:local-development-only@postgres:5432/twinfixeno}
-      KEYCLOAK_ISSUER: http://localhost:8081/realms/twinfixeno
-      KEYCLOAK_JWKS_URL: http://keycloak:8080/realms/twinfixeno/protocol/openid-connect/certs
-      JWT_AUDIENCE: twinfixeno-api
+      KEYCLOAK_ISSUER: ${KEYCLOAK_ISSUER:-http://localhost:8081/realms/twinfixeno}
+      KEYCLOAK_JWKS_URL: ${KEYCLOAK_JWKS_URL:-http://keycloak:8080/realms/twinfixeno/protocol/openid-connect/certs}
+      JWT_AUDIENCE: ${JWT_AUDIENCE:-twinfixeno-api}
       AUTH_REQUIRED: ${AUTH_REQUIRED:-true}
-      FHIR_BASE_URL: http://fhir:8080/fhir
+      FHIR_BASE_URL: ${FHIR_BASE_URL:-http://fhir:8080/fhir}
     depends_on:
-      postgres: {condition: service_healthy}
-      keycloak: {condition: service_started}
-      fhir: {condition: service_started}
-    ports: ["8000:8000"]
+      postgres:
+        condition: service_healthy
+      keycloak:
+        condition: service_healthy
+      fhir:
+        condition: service_started
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/ready', timeout=3).read()"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+      start_period: 20s
     networks: [internal]
+
   web:
-    build: ./apps/web
+    build:
+      context: ./apps/web
+    restart: unless-stopped
     environment:
       NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:9080}
-      NEXT_PUBLIC_KEYCLOAK_URL: http://localhost:8081
-      NEXT_PUBLIC_KEYCLOAK_REALM: twinfixeno
-      NEXT_PUBLIC_KEYCLOAK_CLIENT_ID: twinfixeno-web
-    depends_on: [api, keycloak]
-    ports: ["3000:3000"]
+      NEXT_PUBLIC_KEYCLOAK_URL: ${NEXT_PUBLIC_KEYCLOAK_URL:-http://localhost:8081}
+      NEXT_PUBLIC_KEYCLOAK_REALM: ${NEXT_PUBLIC_KEYCLOAK_REALM:-twinfixeno}
+      NEXT_PUBLIC_KEYCLOAK_CLIENT_ID: ${NEXT_PUBLIC_KEYCLOAK_CLIENT_ID:-twinfixeno-web}
+    depends_on:
+      api:
+        condition: service_healthy
+      keycloak:
+        condition: service_healthy
+    ports:
+      - "3000:3000"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 15
+      start_period: 30s
     networks: [internal]
+
   apisix:
     image: apache/apisix:3.9.1-debian
+    restart: unless-stopped
     volumes:
       - ./infrastructure/apisix/config.yaml:/usr/local/apisix/conf/config.yaml:ro
       - ./infrastructure/apisix/apisix.yaml:/usr/local/apisix/conf/apisix.yaml:ro
-    ports: ["9080:9080"]
-    depends_on: [api]
+    ports:
+      - "9080:9080"
+    depends_on:
+      api:
+        condition: service_healthy
     networks: [internal]
+
 volumes:
   postgres_data:
+  keycloak_data:
+
 networks:
   internal:
     driver: bridge

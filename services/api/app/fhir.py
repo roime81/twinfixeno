@@ -6,9 +6,10 @@ from urllib.parse import urlparse
 import requests
 from sqlalchemy import select
 from sqlalchemy.orm import Session
-from .models import FhirClinicalResource
+from .models import FhirClinicalResource, Observation
 
 IDENTIFIER_SYSTEM = "https://twinfixeno.org/identifier/patient"
+OBSERVATION_IDENTIFIER_SYSTEM = "https://twinfixeno.org/identifier/observation"
 SUPPORTED_RESOURCE_TYPES = ("Observation", "Condition", "Encounter")
 
 def _base_url():
@@ -52,6 +53,49 @@ def upsert_demo_patient(patient):
     created = requests.post(f"{_base_url()}/Patient", json=payload, headers=_headers(), timeout=8)
     created.raise_for_status()
     return {"created": True, "resource": created.json()}
+
+def publish_local_observations(db: Session, patient, fhir_patient_id: str) -> int:
+    """Idempotently publish this application's synthetic observations to HAPI FHIR."""
+    unit_codes = {"bpm": "/min", "°C": "Cel", "mmHg": "mm[Hg]", "kg": "kg", "kg/m²": "kg/m2"}
+    observations = list(db.scalars(
+        select(Observation).where(Observation.patient_id == patient.id).order_by(Observation.id)
+    ).all())
+    published = 0
+    for item in observations:
+        identifier = f"local-observation-{item.id}"
+        existing_response = requests.get(
+            f"{_base_url()}/Observation",
+            params={"identifier": f"{OBSERVATION_IDENTIFIER_SYSTEM}|{identifier}"},
+            headers=_headers(), timeout=10,
+        )
+        existing_response.raise_for_status()
+        existing = _first_resource(existing_response.json())
+        payload = {
+            "resourceType": "Observation",
+            "identifier": [{"system": OBSERVATION_IDENTIFIER_SYSTEM, "value": identifier}],
+            "status": "final",
+            "category": [{"coding": [{
+                "system": "http://terminology.hl7.org/CodeSystem/observation-category",
+                "code": "vital-signs", "display": "Vital Signs"
+            }]}],
+            "code": {"coding": [{"system": "http://loinc.org", "code": item.code, "display": item.display}], "text": item.display},
+            "subject": {"reference": f"Patient/{fhir_patient_id}"},
+            "effectiveDateTime": item.observed_at.isoformat(),
+            "valueQuantity": {
+                "value": float(item.value), "unit": item.unit,
+                "system": "http://unitsofmeasure.org", "code": unit_codes.get(item.unit, item.unit)
+            },
+        }
+        if existing and existing.get("id"):
+            response = requests.put(
+                f"{_base_url()}/Observation/{existing['id']}",
+                json={**payload, "id": existing["id"]}, headers=_headers(), timeout=10,
+            )
+        else:
+            response = requests.post(f"{_base_url()}/Observation", json=payload, headers=_headers(), timeout=10)
+        response.raise_for_status()
+        published += 1
+    return published
 
 def _patient_reference(resource: dict) -> str | None:
     reference = (resource.get("subject") or {}).get("reference") or (resource.get("patient") or {}).get("reference")

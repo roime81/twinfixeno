@@ -68,10 +68,41 @@ class TwinSnapshotArtifact(Base):
     created_by: Mapped[str | None] = mapped_column(String(255), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
+class SimulationRun(Base):
+    __tablename__ = "simulation_runs"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    patient_id: Mapped[int] = mapped_column(ForeignKey("patients.id", ondelete="CASCADE"), index=True)
+    baseline_observation_id: Mapped[int] = mapped_column(ForeignKey("observations.id", ondelete="RESTRICT"))
+    scenario_name: Mapped[str] = mapped_column(String(120))
+    formula_id: Mapped[str] = mapped_column(String(64), default="percentage-delta-v1")
+    inputs: Mapped[dict] = mapped_column(JSON)
+    result: Mapped[dict] = mapped_column(JSON)
+    created_by: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+class AuditEvent(Base):
+    __tablename__ = "audit_events"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    actor_subject: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
+    actor_username: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
+    action: Mapped[str] = mapped_column(String(100), index=True)
+    patient_id: Mapped[int | None] = mapped_column(ForeignKey("patients.id", ondelete="SET NULL"), nullable=True, index=True)
+    resource_type: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    resource_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    outcome: Mapped[str] = mapped_column(String(24), default="success")
+    details: Mapped[dict] = mapped_column(JSON, default=dict)
+    source_ip: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), index=True)
+
 def _immutable_artifact(mapper, connection, target):
     raise ValueError("Twin snapshot artifacts are immutable; create a new snapshot instead")
+
+def _immutable_audit_event(mapper, connection, target):
+    raise ValueError("Audit events are append-only")
 
 event.listen(TwinSnapshot, "before_update", _immutable_artifact)
 event.listen(TwinSnapshot, "before_delete", _immutable_artifact)
 event.listen(TwinSnapshotArtifact, "before_update", _immutable_artifact)
 event.listen(TwinSnapshotArtifact, "before_delete", _immutable_artifact)
+event.listen(AuditEvent, "before_update", _immutable_audit_event)
+event.listen(AuditEvent, "before_delete", _immutable_audit_event)
