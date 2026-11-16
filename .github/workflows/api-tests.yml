@@ -104,16 +104,16 @@ jobs:
               "HAPI FHIR R4": "http://127.0.0.1:8090/fhir/metadata",
           }
           pending = dict(checks)
-          deadline = time.time() + 900
+          deadline = time.time() + 180
           while pending and time.time() < deadline:
               for name, url in list(pending.items()):
                   try:
                       with urllib.request.urlopen(url, timeout=8) as response:
                           if response.status == 200:
-                              print(f"PASS {name}: HTTP {response.status}")
+                              print(f"PASS {name}: HTTP {response.status}", flush=True)
                               pending.pop(name)
                   except Exception as exc:
-                      print(f"WAIT {name}: {exc}")
+                      print(f"WAIT {name} ({url}): {exc}", flush=True)
               if pending:
                   time.sleep(5)
           if pending:
