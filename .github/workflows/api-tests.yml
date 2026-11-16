@@ -108,6 +108,9 @@ jobs:
               "HAPI FHIR R4": "http://127.0.0.1:8090/fhir/metadata",
               "Ollama local model runtime": "http://127.0.0.1:11434/api/tags",
               "Qdrant vector store": "http://127.0.0.1:6333/collections",
+              "Prometheus metrics server": "http://127.0.0.1:9090/-/ready",
+              "Grafana dashboards": "http://127.0.0.1:3001/api/health",
+              "Jaeger trace viewer": "http://127.0.0.1:16686/api/services",
           }
           pending = dict(checks)
           deadline = time.time() + 180
