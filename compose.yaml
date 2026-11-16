@@ -145,6 +145,7 @@ services:
       KEYCLOAK_JWKS_URL: ${KEYCLOAK_JWKS_URL:-http://keycloak:8080/realms/twinfixeno/protocol/openid-connect/certs}
       JWT_AUDIENCE: ${JWT_AUDIENCE:-twinfixeno-api}
       AUTH_REQUIRED: ${AUTH_REQUIRED:-true}
+      ALLOW_USERNAME_PATIENT_GRANTS: ${ALLOW_USERNAME_PATIENT_GRANTS:-false}
       FHIR_BASE_URL: ${FHIR_BASE_URL:-http://fhir:8080/fhir}
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000}
       OLLAMA_URL: http://ollama:11434
