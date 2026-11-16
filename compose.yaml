@@ -167,7 +167,7 @@ services:
       context: ./apps/web
     restart: unless-stopped
     environment:
-      WEB_API_BASE_URL: ${WEB_API_BASE_URL:-http://localhost:8000}
+      WEB_API_BASE_URL: ${WEB_API_BASE_URL:-http://localhost:9080}
       WEB_KEYCLOAK_URL: ${WEB_KEYCLOAK_URL:-http://localhost:8081}
       WEB_KEYCLOAK_REALM: ${WEB_KEYCLOAK_REALM:-twinfixeno}
       WEB_KEYCLOAK_CLIENT_ID: ${WEB_KEYCLOAK_CLIENT_ID:-twinfixeno-web}
@@ -176,6 +176,8 @@ services:
         condition: service_healthy
       keycloak-ready:
         condition: service_completed_successfully
+      apisix:
+        condition: service_started
     ports:
       - "127.0.0.1:${WEB_PORT:-3000}:3000"
     healthcheck:
