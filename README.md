@@ -496,16 +496,16 @@ When screenshots are available, embed them here using relative paths, for exampl
 
 A twin snapshot is a versioned, reproducible representation of the derived patient state at a particular point in time.
 
-A snapshot should record:
+A snapshot records:
 
-- Snapshot ID and patient reference
-- Source FHIR resource references and versions
-- Clinical observation time range
-- Snapshot creation time
-- Twin engine and calculation version
-- Normalised measurements and derived metrics
-- Data completeness and validation status
-- Provenance and calculation metadata
+- Snapshot ID, patient reference and version
+- Canonical JSON payload of local observations and imported FHIR resources
+- Source FHIR logical ids, versions and lastUpdated timestamps
+- Per-record SHA-256 hashes and overall payload SHA-256
+- Snapshot creation time and creator
+- Source-system and observation-time provenance
+
+The current implementation is append-only, with PostgreSQL triggers and ORM mutation guards. A digest is an integrity checksum, not a digital signature.
 
 Snapshots are append-only. Each snapshot stores a canonical JSON payload, SHA-256 digest, creator, capture time and per-source provenance (source system, resource id, FHIR version, lastUpdated and content hash). PostgreSQL triggers reject UPDATE/DELETE on snapshot headers and artifacts; ORM hooks enforce immutability in local SQLite/test use. A new source-data change creates a new snapshot version.
 
@@ -543,9 +543,9 @@ The first interoperability scope targets HL7 FHIR R4.
 | CarePlan | Documented care-plan context |
 | DocumentReference | Reference to clinical documents |
 
-FHIR resources remain the interoperable source representation. The current API can synchronise the synthetic application patient to a FHIR `Patient` resource using a stable identifier system, and retrieve matching FHIR Patient search results. Observation and other clinical resource ingestion are not implemented yet. The twin engine will create application-specific derived state with references back to those resources.
+FHIR resources remain the interoperable source representation. The current API synchronises the synthetic application patient to a FHIR `Patient` resource, then imports patient-scoped `Observation`, `Condition` and `Encounter` resources. Imported resources retain their FHIR logical id, version, last-updated timestamp, status, effective date, full JSON and SHA-256 digest. A patient-reference check is applied before persistence. The timeline API and dashboard render these imported resources chronologically. MedicationRequest, DiagnosticReport, Procedure, AllergyIntolerance and other resource types remain future work.
 
-The implementation must validate resource profiles and terminology assumptions rather than treating every FHIR resource as clinically equivalent.
+Patient-level authorisation is applied to FHIR sync and timeline routes. Administrators can create and revoke patient grants. Clinicians can read assigned patients and write only where the grant is `write`; researchers are read-only. The demo clinician has write access to SYN-0001, while the demo researcher has read-only access. The implementation must validate resource profiles and terminology assumptions rather than treating every FHIR resource as clinically equivalent.
 
 ## Digital Twin lifecycle
 
