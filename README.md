@@ -80,7 +80,7 @@ The initial use case is a synthetic chronic-care patient journey. The MVP is int
 | Private AI copilot | Local Ollama LLM with patient-scoped retrieval and source evidence | Implemented for synthetic-data MVP; not clinically validated |
 | Evidence assistant | Local RAG question answering plus deterministic fallback report | Implemented for synthetic-data MVP |
 | MCP server | Streamable HTTP with timeline, indexing and evidence-query tools; caller token forwarded to API | Implemented for MVP; only three tools |
-| Observability | Structured logs, metrics and distributed traces | Not implemented |
+| Observability | Prometheus HTTP metrics and workflow counters, OpenTelemetry request/AI traces, Grafana and Jaeger | Implemented for local synthetic-data operations; central log aggregation and alert routing remain outstanding |
 
 ### Intended user journey
 
