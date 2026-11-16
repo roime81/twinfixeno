@@ -33,7 +33,7 @@ test("clinician can use the patient twin workflows and is kept out of admin gove
   page.on("pageerror", (error) => pageErrors.push(error.message));
 
   await signInAsDemoUser(page, "demo.clinician");
-  await expect(page.getByText("Alex Morgan")).toBeVisible();
+  await expect(page.getByText("Alex Morgan").first()).toBeVisible();
   await expect(page.getByRole("button", { name: "Governance & audit" })).toHaveCount(0);
 
   await page.getByRole("button", { name: "Clinical timeline" }).click();
@@ -99,7 +99,7 @@ test("researcher receives read-only controls in the clinical workspace", async (
     "demo.researcher",
     "Demo-Research-Change-Me-2026!",
   );
-  await expect(page.getByText("Alex Morgan")).toBeVisible();
+  await expect(page.getByText("Alex Morgan").first()).toBeVisible();
   await expect(page.getByRole("button", { name: "Governance & audit" })).toHaveCount(0);
 
   await expect(page.getByRole("button", { name: "Sync FHIR" })).toBeDisabled();
