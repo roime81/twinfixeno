@@ -355,7 +355,16 @@ Stop and remove development volumes (destructive; this deletes local database an
 docker compose down -v
 ```
 
-### 4. Initialise the database
+### 4. Sign in
+
+Open http://localhost:3000. The browser redirects to Keycloak. The imported development realm creates a temporary demo user:
+
+- Username: `demo.clinician`
+- Temporary password: `Demo-Only-Change-Me-2026!`
+
+Keycloak requires a password change on first sign-in. These credentials are for local synthetic-data development only. Change or remove them before sharing the environment.
+
+### 5. Initialise the database
 
 Formal Alembic migrations are a follow-up; the current API creates its initial schema on startup. The planned migration command is:
 
@@ -397,7 +406,7 @@ Do not expose PostgreSQL, Qdrant, object storage, model inference or internal se
 
 ### Local URLs
 
-These are the development endpoints defined by the current `compose.yaml`.
+These are the development endpoints defined by the current `compose.yaml`. Keycloak redirects the browser to sign in; the API's protected routes require the resulting access token.
 
 | Component | Proposed URL |
 |---|---|
@@ -445,6 +454,16 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
 The container workflow is the supported quick start. The API currently validates access tokens against the Keycloak realm JWKS endpoint.
+
+### FHIR integration quick check
+
+After signing in, use **Sync to FHIR** on the patient card to create the synthetic Patient resource in HAPI FHIR. The authenticated API endpoints are:
+
+- `GET /api/v1/integrations/fhir/status`
+- `POST /api/v1/patients/{id}/fhir/sync`
+- `GET /api/v1/patients/{id}/fhir`
+
+The APISIX gateway exposes these under `http://localhost:9080`. The FHIR server itself is available at `http://localhost:8090/fhir/metadata`.
 
 ### Local LLM
 
