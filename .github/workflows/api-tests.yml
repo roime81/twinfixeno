@@ -1,0 +1,35 @@
+name: twinfixeno API tests
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "services/api/**"
+      - ".github/workflows/api-tests.yml"
+  pull_request:
+    paths:
+      - "services/api/**"
+      - ".github/workflows/api-tests.yml"
+
+jobs:
+  api-tests:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/api
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: services/api/requirements.txt
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Run API tests
+        env:
+          DATABASE_URL: sqlite:///./ci-test.db
+          AUTH_REQUIRED: "false"
+        run: pytest -q
