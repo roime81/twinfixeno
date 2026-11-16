@@ -55,11 +55,29 @@ services:
         condition: service_healthy
     networks: [internal]
 
+  keycloak-ready:
+    image: curlimages/curl:8.12.1
+    restart: "no"
+    command: ["--fail", "--silent", "--show-error", "--retry", "90", "--retry-connrefused", "--retry-delay", "2", "--retry-max-time", "240", "http://keycloak:9000/health/ready"]
+    depends_on:
+      keycloak:
+        condition: service_started
+    networks: [internal]
+
   fhir:
     image: hapiproject/hapi:v7.4.0
     restart: unless-stopped
     ports:
       - "${FHIR_PORT:-8090}:8080"
+    networks: [internal]
+
+  fhir-ready:
+    image: curlimages/curl:8.12.1
+    restart: "no"
+    command: ["--fail", "--silent", "--show-error", "--retry", "120", "--retry-connrefused", "--retry-delay", "2", "--retry-max-time", "300", "http://fhir:8080/fhir/metadata"]
+    depends_on:
+      fhir:
+        condition: service_started
     networks: [internal]
 
   api:
@@ -77,10 +95,10 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      keycloak:
-        condition: service_started
-      fhir:
-        condition: service_started
+      keycloak-ready:
+        condition: service_completed_successfully
+      fhir-ready:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/ready', timeout=3)"]
       interval: 10s
@@ -96,15 +114,15 @@ services:
       context: ./apps/web
     restart: unless-stopped
     environment:
-      WEB_API_BASE_URL: ${WEB_API_BASE_URL:-http://localhost:9080}
+      WEB_API_BASE_URL: ${WEB_API_BASE_URL:-http://localhost:8000}
       WEB_KEYCLOAK_URL: ${WEB_KEYCLOAK_URL:-http://localhost:8081}
       WEB_KEYCLOAK_REALM: ${WEB_KEYCLOAK_REALM:-twinfixeno}
       WEB_KEYCLOAK_CLIENT_ID: ${WEB_KEYCLOAK_CLIENT_ID:-twinfixeno-web}
     depends_on:
       api:
         condition: service_healthy
-      keycloak:
-        condition: service_started
+      keycloak-ready:
+        condition: service_completed_successfully
     ports:
       - "${WEB_PORT:-3000}:3000"
     networks: [internal]
