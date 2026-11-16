@@ -27,9 +27,10 @@ export default function Home(){
    const patients:Patient[]=await response.json();
    if(!patients[0])throw new Error("No synthetic demo patient found");
    if(!alive)return;setPatient(patients[0]);
-   const [obsResponse,fhirResponse]=await Promise.all([
+   const [obsResponse,fhirResponse,timelineResponse]=await Promise.all([
     fetch(API+`/api/v1/patients/${patients[0].id}/observations`,{headers}),
-    fetch(API+"/api/v1/integrations/fhir/status",{headers})
+    fetch(API+"/api/v1/integrations/fhir/status",{headers}),
+    fetch(API+`/api/v1/patients/${patients[0].id}/timeline`,{headers})
    ]);
    if(!obsResponse.ok)throw new Error("Observation API request failed");
    const obs:Observation[]=await obsResponse.json();
