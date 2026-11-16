@@ -87,6 +87,15 @@ services:
     ports: ["127.0.0.1:${QDRANT_PORT:-6333}:6333"]
     networks: [internal]
 
+  qdrant-ready:
+    image: curlimages/curl:8.12.1
+    restart: "no"
+    command: ["--fail", "--silent", "--show-error", "--retry", "90", "--retry-connrefused", "--retry-delay", "2", "--retry-max-time", "240", "http://qdrant:6333/collections"]
+    depends_on:
+      qdrant-ready:
+        condition: service_completed_successfully
+    networks: [internal]
+
   ollama:
     image: ollama/ollama:0.6.8
     restart: unless-stopped
