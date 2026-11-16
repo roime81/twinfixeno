@@ -8,7 +8,7 @@ from .schemas import PatientOut, ObservationOut
 from .seed import seed
 from .auth import get_current_user
 from .access import get_accessible_patient, require_role, READ_ROLES
-from .snapshots import create_immutable_snapshot
+from .snapshots import create_immutable_snapshot, sha256_json
 from .timeline import timeline_item
 from . import fhir
 
@@ -102,7 +102,7 @@ def get_snapshot_artifact(patient_id: int, snapshot_id: int, db: Session = Depen
     if artifact is None:
         raise HTTPException(status_code=404, detail="Snapshot artifact not found")
     return {"id": snapshot.id, "version": snapshot.version, "created_at": snapshot.created_at,
-            "content_sha256": artifact.content_sha256, "payload": artifact.payload, "provenance": artifact.provenance}
+            "content_sha256": artifact.content_sha256, "integrity_verified": sha256_json(artifact.payload) == artifact.content_sha256, "payload": artifact.payload, "provenance": artifact.provenance}
 
 @app.post("/api/v1/patients/{patient_id}/snapshots", status_code=201)
 def create_snapshot(patient_id: int, db: Session = Depends(get_db), user=Depends(get_current_user)):
