@@ -1,6 +1,7 @@
 import os
 os.environ.setdefault("DATABASE_URL", "sqlite:///./pytest-twinfixeno.db")
 os.environ.setdefault("AUTH_REQUIRED", "false")
+os.environ.setdefault("ALLOW_USERNAME_PATIENT_GRANTS", "true")
 
 import pytest
 from fastapi.testclient import TestClient
