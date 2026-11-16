@@ -103,7 +103,7 @@
       },
       "targets": [
         {
-          "expr": "sum(rate(http_requests_total{status=~\"5..\"}[5m]))",
+          "expr": "sum(rate(http_requests_total{status=\"5xx\"}[5m]))",
           "legendFormat": "5xx/sec",
           "refId": "A"
         }
