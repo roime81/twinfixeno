@@ -4,7 +4,7 @@
 
 TWINFixeno is an early-stage, design-driven MVP for creating a longitudinal digital representation of a patient's health journey. It brings together interoperable clinical data, versioned patient-state snapshots, explainable analytics, hypothetical scenario exploration, private local language models and governed Model Context Protocol (MCP) tools.
 
-> **Project status:** Early MVP implementation. The repository includes a runnable Next.js + FastAPI + PostgreSQL + APISIX foundation. Authentication, FHIR integration, simulation, AI/MCP and full observability remain planned.
+> **Project status:** MVP foundation now includes Keycloak OIDC, patient-level access grants, HAPI FHIR Patient synchronisation, Observation/Condition/Encounter ingestion, FHIR-backed timeline, immutable snapshot artifacts with SHA-256 provenance, and an automated API test suite. Hosted CI must pass before this milestone is considered verified.
 
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![Status](https://img.shields.io/badge/status-MVP%20in%20development-orange.svg)](#roadmap)
@@ -69,11 +69,11 @@ The initial use case is a synthetic chronic-care patient journey. The MVP is int
 
 | Capability | MVP scope | Priority |
 |---|---|---:|
-| Identity and access | Login, roles and patient-level authorisation | P0 |
+| Identity and access | Login, roles and patient-level authorisation | Implemented for MVP |
 | Patient registry | Create, search and view synthetic patients | P0 |
-| FHIR integration | Import and retrieve selected FHIR R4 resources | P0 |
-| Twin engine | Aggregate, calculate and version patient snapshots | P0 |
-| Clinical timeline | Encounters, conditions, medications and observations | P0 |
+| FHIR integration | Patient, Observation, Condition and Encounter import | Implemented for MVP |
+| Twin engine | Immutable snapshots with payload hash and source provenance | Implemented for MVP |
+| Clinical timeline | FHIR-backed Observation, Condition and Encounter timeline | Implemented for MVP |
 | Twin visualisation | Patient summary, trends and data completeness | P0 |
 | Simulation studio | Baseline versus clearly labelled hypothetical scenario | P0 |
 | Audit | User, data access, AI and tool invocation events | P0 |
@@ -278,7 +278,7 @@ twinfixeno/
     └── workflows/
 ```
 
-The repository is populated incrementally. See [MVP implementation status](docs/MVP-IMPLEMENTATION.md) for implemented and planned components.
+The repository is populated incrementally. See [MVP implementation status](docs/MVP-IMPLEMENTATION.md) for implementation details, API routes, local test instructions and remaining production-hardening work.
 
 ## Prerequisites
 
@@ -359,22 +359,15 @@ docker compose down -v
 
 Open http://localhost:3000. The browser redirects to Keycloak. The imported development realm creates a temporary demo user:
 
-- Username: `demo.clinician`
-- Temporary password: `Demo-Only-Change-Me-2026!`
+- Clinician: `demo.clinician` / `Demo-Only-Change-Me-2026!` (write access to SYN-0001)
+- Researcher: `demo.researcher` / `Demo-Research-Change-Me-2026!` (read-only access to SYN-0001)
+- Administrator: `demo.admin` / `Demo-Admin-Change-Me-2026!` (all patients and access-grant management)
 
 Keycloak requires a password change on first sign-in. These credentials are for local synthetic-data development only. Change or remove them before sharing the environment.
 
-### 5. Initialise the database
+### 5. Database and demo data
 
-Formal Alembic migrations are a follow-up; the current API creates its initial schema on startup. The planned migration command is:
-
-```bash
-docker compose exec api alembic upgrade head
-```
-
-The API creates its initial schema and loads one fictional patient with six observations at startup. Keycloak imports the `twinfixeno` realm on first start; HAPI FHIR runs as a separate service.
-
-> **Current status:** Keycloak OIDC login, API JWT validation and basic Patient resource synchronisation are implemented. See `docs/MVP-IMPLEMENTATION.md` for limitations.
+The API creates the application schema on startup and seeds a fictional patient, six synthetic observations, and patient grants for the demo clinician and researcher. Formal Alembic migrations remain a follow-up. Keycloak imports the development realm and HAPI FHIR runs as a separate service.
 
 ## Configuration
 
@@ -459,10 +452,11 @@ The container workflow is the supported quick start. The API currently validates
 After signing in, use **Sync to FHIR** on the patient card to create the synthetic Patient resource in HAPI FHIR. The authenticated API endpoints are:
 
 - `GET /api/v1/integrations/fhir/status`
-- `POST /api/v1/patients/{id}/fhir/sync`
+- `POST /api/v1/patients/{id}/fhir/sync` — upserts Patient and ingests Observation, Condition and Encounter resources.
 - `GET /api/v1/patients/{id}/fhir`
+- `GET /api/v1/patients/{id}/timeline`
 
-The APISIX gateway exposes these under `http://localhost:9080`. The FHIR server itself is available at `http://localhost:8090/fhir/metadata`.
+FHIR resources are matched to the FHIR Patient reference before they are stored. Imported resources retain FHIR version metadata and content hashes. The APISIX gateway exposes these under `http://localhost:9080`; HAPI FHIR is available at `http://localhost:8090/fhir/metadata`.
 
 ### Local LLM
 
@@ -513,7 +507,7 @@ A snapshot should record:
 - Data completeness and validation status
 - Provenance and calculation metadata
 
-Snapshots must be immutable once finalised. A new source-data change or engine version creates a new snapshot rather than silently rewriting history.
+Snapshots are append-only. Each snapshot stores a canonical JSON payload, SHA-256 digest, creator, capture time and per-source provenance (source system, resource id, FHIR version, lastUpdated and content hash). PostgreSQL triggers reject UPDATE/DELETE on snapshot headers and artifacts; ORM hooks enforce immutability in local SQLite/test use. A new source-data change creates a new snapshot version.
 
 ## Synthetic demo data
 
@@ -637,7 +631,9 @@ Security controls are foundational, even in the MVP.
 
 - OIDC authentication through Keycloak (development realm and browser PKCE flow).
 - API-side RS256 JWT signature, issuer and audience validation against Keycloak JWKS.
-- Realm roles are included in the authenticated principal; fine-grained role and patient-level authorisation policies are still required.
+- Patient-level grants bound to Keycloak subject and/or username; unassigned patient lookups return 404.
+- Administrators have platform-wide access; clinicians require a write grant for mutations; researchers are read-only.
+- Administrator-only access grant creation and revocation.
 - Server-side permission checks on every patient resource and MCP tool.
 - PostgreSQL row-level security where appropriate, in addition to application checks.
 - TLS for network communications in shared environments.
@@ -653,7 +649,7 @@ A production healthcare deployment requires a formal threat model, penetration t
 
 ## Testing and quality
 
-The planned quality strategy includes:
+The current API test suite uses Pytest and FastAPI TestClient to exercise patient access isolation, researcher read-only enforcement, administrator grant management, FHIR ingestion and patient-reference filtering, timeline ordering, snapshot hashes and immutability. GitHub Actions runs these tests on pushes and pull requests. Run locally from `services/api` with `pip install -r requirements.txt` followed by `pytest -q`. The broader planned quality strategy includes:
 
 | Test type | Coverage |
 |---|---|
@@ -682,16 +678,17 @@ Clinical correctness cannot be established by software tests alone. Domain exper
 - [x] PostgreSQL persistence
 - [ ] Formal database migrations
 - [x] Keycloak authentication (development OIDC and API token validation)
+- [x] Patient-level access grants and role policies
 - [x] APISIX gateway
 - [x] Docker Compose development environment
 
 ### Milestone 2 — Patient and twin
 - [ ] Synthetic patient registry
 - [x] HAPI FHIR service and Patient resource synchronisation
-- [ ] FHIR Observation and other clinical resource ingestion
-- [ ] Twin state generation
-- [ ] Immutable versioned snapshots
-- [ ] Clinical timeline and trends
+- [x] FHIR Observation, Condition and Encounter ingestion
+- [x] Twin snapshot payload and source provenance
+- [x] Immutable versioned snapshot artifacts
+- [x] FHIR-backed clinical timeline
 
 ### Milestone 3 — Simulation
 - [ ] Scenario data model
@@ -709,7 +706,8 @@ Clinical correctness cannot be established by software tests alone. Domain exper
 
 ### Milestone 5 — Hardening and demonstration
 - [ ] Observability dashboards
-- [ ] Automated security and integration tests
+- [x] Automated API integration tests and CI workflow
+- [ ] Broader security and end-to-end tests
 - [ ] Synthetic demo dataset
 - [ ] UI screenshots
 - [ ] Deployment and operator documentation
