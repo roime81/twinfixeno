@@ -6,8 +6,8 @@ const replacementPassword = process.env.PW_E2E_PASSWORD || "E2E-Only-Change-Me-2
 async function signInAsDemoClinician(page: import("@playwright/test").Page) {
   await page.goto("/");
   await expect(page).toHaveURL(/localhost:8081/);
-  await page.getByLabel("Username").fill("demo.clinician");
-  await page.getByLabel("Password").fill(initialPassword);
+  await page.locator('input[name="username"]').fill("demo.clinician");
+  await page.locator('input[name="password"]').fill(initialPassword);
   await page.getByRole("button", { name: /sign in/i }).click();
 
   // Keycloak marks only the local seeded demo credentials as temporary.
