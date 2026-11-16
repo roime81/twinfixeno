@@ -4,6 +4,14 @@ import os
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
+from prometheus_fastapi_instrumentator import Instrumentator
+from prometheus_client import Counter
+from opentelemetry import trace
+from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
+from opentelemetry.sdk.resources import Resource
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import BatchSpanProcessor
+from opentelemetry.trace import Status, StatusCode
 from sqlalchemy import select, or_, text, func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -28,6 +36,44 @@ app = FastAPI(
     version="0.4.0",
     description="Synthetic-data healthcare Digital Twin MVP. Not for clinical decision-making.",
 )
+
+# Metrics and traces deliberately exclude request/response bodies, query strings,
+# bearer tokens and patient names. Use route templates, not raw patient URLs.
+resource = Resource.create({
+    "service.name": "twinfixeno-api",
+    "service.version": "0.4.0",
+    "deployment.environment": os.getenv("APP_ENV", "development"),
+})
+trace_provider = TracerProvider(resource=resource)
+otlp_endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "").strip()
+if otlp_endpoint:
+    trace_provider.add_span_processor(
+        BatchSpanProcessor(OTLPSpanExporter(endpoint=otlp_endpoint, insecure=True))
+    )
+trace.set_tracer_provider(trace_provider)
+http_tracer = trace.get_tracer("twinfixeno.api")
+ai_tracer = trace.get_tracer("twinfixeno.ai")
+
+RAG_QUERY_COUNTER = Counter(
+    "twinfixeno_rag_queries_total",
+    "Local patient evidence query operations",
+    labelnames=("outcome",),
+)
+RAG_INDEX_COUNTER = Counter(
+    "twinfixeno_rag_index_operations_total",
+    "Local patient evidence indexing operations",
+    labelnames=("outcome",),
+)
+FHIR_SYNC_COUNTER = Counter(
+    "twinfixeno_fhir_sync_operations_total",
+    "FHIR patient synchronisation operations",
+    labelnames=("outcome",),
+)
+SNAPSHOT_COUNTER = Counter(
+    "twinfixeno_snapshot_operations_total",
+    "Twin snapshot creation operations",
+    labelnames=("outcome",),
+)
 cors_origins = [
     origin.strip()
     for origin in os.getenv("CORS_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000").split(",")
@@ -40,6 +86,29 @@ app.add_middleware(
     allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type"],
 )
+
+@app.middleware("http")
+async def trace_http_requests(request: Request, call_next):
+    with http_tracer.start_as_current_span("http.server") as span:
+        span.set_attribute("http.request.method", request.method)
+        try:
+            response = await call_next(request)
+            route = request.scope.get("route")
+            if route is not None and getattr(route, "path", None):
+                span.set_attribute("http.route", route.path)
+            span.set_attribute("http.response.status_code", response.status_code)
+            if response.status_code >= 500:
+                span.set_status(Status(StatusCode.ERROR))
+            return response
+        except Exception as exc:
+            span.record_exception(exc)
+            span.set_status(Status(StatusCode.ERROR))
+            raise
+
+Instrumentator(
+    excluded_handlers=["/metrics", "/health", "/health/ready"],
+    should_group_status_codes=True,
+).instrument(app).expose(app, include_in_schema=False)
 
 class AccessGrantIn(BaseModel):
     username: str | None = Field(default=None, min_length=1, max_length=255)
@@ -381,14 +450,17 @@ def sync_patient_to_fhir(patient_id: int, request: Request, db: Session = Depend
             raise ValueError("FHIR server did not return a Patient resource id")
         published_count = fhir.publish_local_observations(db, patient, fhir_id)
         imported = fhir.sync_patient_resources(db, patient, fhir_id)
+        FHIR_SYNC_COUNTER.labels(outcome="success").inc()
         audit(db, user, "patient.fhir.sync", request, patient_id=patient_id, resource_type="Patient", resource_id=fhir_id, details={"published_observations": published_count, "imported_resources": imported["imported_count"]})
         return {
             "patient_created": result["created"], "resource_type": "Patient", "fhir_id": fhir_id,
             "identifier": patient.external_id, "published_observation_count": published_count, **imported,
         }
     except Exception as exc:
+        FHIR_SYNC_COUNTER.labels(outcome="error").inc()
+        logger.exception("FHIR synchronisation failed")
         db.rollback()
-        raise HTTPException(status_code=502, detail=f"FHIR synchronisation failed: {exc}") from exc
+        raise HTTPException(status_code=502, detail="FHIR synchronisation failed; inspect API logs for diagnostic details.") from exc
 
 @app.get("/api/v1/patients/{patient_id}/fhir")
 def get_patient_fhir(patient_id: int, db: Session = Depends(get_db), user=Depends(get_current_user)):
@@ -411,10 +483,17 @@ def ai_status(user=Depends(get_current_user)):
 def rag_index(patient_id: int, request: Request, db: Session = Depends(get_db), user=Depends(get_current_user)):
     get_accessible_patient(db, patient_id, user, write=True)
     try:
-        result = rag.index_patient(db, patient_id)
+        with ai_tracer.start_as_current_span("ai.rag.index") as span:
+            result = rag.index_patient(db, patient_id)
+            span.set_attribute("ai.embedding.model", result.get("embedding_model", ""))
+            span.set_attribute("ai.embedding.model_digest", result.get("embedding_model_digest") or "unavailable")
+            span.set_attribute("ai.index.schema_version", result.get("index_schema_version", ""))
+            span.set_attribute("ai.indexed_chunks", int(result.get("indexed", 0)))
+        RAG_INDEX_COUNTER.labels(outcome="success").inc()
         audit(db, user, 'patient.rag.index', request, patient_id=patient_id, details=result)
         return result
     except Exception as exc:
+        RAG_INDEX_COUNTER.labels(outcome="error").inc()
         logger.exception("Local evidence indexing failed")
         raise HTTPException(status_code=503, detail="Local evidence indexing service is unavailable; inspect API logs.") from exc
 
@@ -422,7 +501,18 @@ def rag_index(patient_id: int, request: Request, db: Session = Depends(get_db), 
 def rag_query(patient_id: int, question: RagQuestion, request: Request, db: Session = Depends(get_db), user=Depends(get_current_user)):
     get_accessible_patient(db, patient_id, user)
     try:
-        result = rag.answer_patient(db, patient_id, question.question, question.top_k)
+        with ai_tracer.start_as_current_span("ai.rag.query") as span:
+            result = rag.answer_patient(db, patient_id, question.question, question.top_k)
+            span.set_attribute("ai.model.name", result.get("model", ""))
+            span.set_attribute("ai.model.digest", result.get("chat_model_digest") or "unavailable")
+            span.set_attribute("ai.embedding.model", result.get("embedding_model", ""))
+            span.set_attribute("ai.embedding.model_digest", result.get("embedding_model_digest") or "unavailable")
+            span.set_attribute("ai.prompt.id", result.get("prompt_id", ""))
+            span.set_attribute("ai.prompt.version", result.get("prompt_version", ""))
+            span.set_attribute("ai.retrieval.version", result.get("retrieval_version", ""))
+            span.set_attribute("ai.retrieval.count", len(result.get("sources", [])))
+            span.set_attribute("ai.answer.sha256", result.get("answer_sha256", ""))
+        RAG_QUERY_COUNTER.labels(outcome="success").inc()
         source_fingerprints = [
             __import__("hashlib").sha256(
                 f"{item.get('source_type', '')}:{item.get('source_id', '')}".encode("utf-8")
@@ -445,5 +535,6 @@ def rag_query(patient_id: int, question: RagQuestion, request: Request, db: Sess
         })
         return result
     except Exception as exc:
+        RAG_QUERY_COUNTER.labels(outcome="error").inc()
         logger.exception("Local evidence query failed")
         raise HTTPException(status_code=503, detail="Local evidence query service is unavailable; inspect API logs.") from exc
