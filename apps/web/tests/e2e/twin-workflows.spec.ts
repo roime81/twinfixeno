@@ -1,36 +1,19 @@
 import { expect, test } from "@playwright/test";
 
-const initialPassword = "Demo-Only-Change-Me-2026!";
-const replacementPassword = process.env.PW_E2E_PASSWORD || "E2E-Only-Change-Me-2026!";
+const clinicianPassword = process.env.PW_E2E_CLINICIAN_PASSWORD || "E2E-Clinician-Only-2026!";
+const adminPassword = process.env.PW_E2E_ADMIN_PASSWORD || "E2E-Admin-Only-2026!";
+const researcherPassword = process.env.PW_E2E_RESEARCHER_PASSWORD || "E2E-Researcher-Only-2026!";
 
 async function signInAsDemoUser(
   page: import("@playwright/test").Page,
   username: string,
-  password = initialPassword,
+  password: string,
 ) {
   await page.goto("/");
   await expect(page).toHaveURL(/localhost:8081/);
   await page.locator('input[name="username"]').fill(username);
   await page.locator('input[name="password"]').fill(password);
   await page.getByRole("button", { name: /sign in/i }).click();
-
-  // Keycloak marks only the local seeded demo credentials as temporary.
-  // Update the password during the first browser login; Compose CI starts
-  // with an empty identity volume, so this is repeatable for every run.
-  const passwordUpdate = page.locator('input[name="password-new"]');
-  const requiresPasswordChange = await passwordUpdate.isVisible({ timeout: 5_000 }).catch(() => false);
-  if (requiresPasswordChange) {
-    await passwordUpdate.fill(replacementPassword);
-    await page.locator('input[name="password-confirm"]').fill(replacementPassword);
-    await page.locator('button[type="submit"], input[type="submit"]').last().click();
-  }
-
-  // A failed login should fail with the actual Keycloak validation message,
-  // rather than a misleading timeout waiting for a password-change form.
-  const loginError = page.locator("#input-error, .alert-error, [role='alert']").first();
-  if (await loginError.isVisible({ timeout: 1_000 }).catch(() => false)) {
-    throw new Error("Keycloak sign-in failed: " + (await loginError.innerText()));
-  }
   await expect(page).toHaveURL(/localhost:3000/, { timeout: 90_000 });
   await expect(page.getByRole("heading", { name: "Command centre" })).toBeVisible({
     timeout: 90_000,
@@ -41,7 +24,7 @@ test("clinician can use the patient twin workflows and is kept out of admin gove
   const pageErrors: string[] = [];
   page.on("pageerror", (error) => pageErrors.push(error.message));
 
-  await signInAsDemoUser(page, "demo.clinician");
+  await signInAsDemoUser(page, "demo.clinician", clinicianPassword);
   await expect(page.getByText("Alex Morgan").first()).toBeVisible();
   await expect(page.getByRole("button", { name: "Governance & audit" })).toHaveCount(0);
 
@@ -81,11 +64,7 @@ test("clinician can use the patient twin workflows and is kept out of admin gove
 
 
 test("administrator can manage patient access grants and review audit events", async ({ page }) => {
-  await signInAsDemoUser(
-    page,
-    "demo.admin",
-    "Demo-Admin-Change-Me-2026!",
-  );
+  await signInAsDemoUser(page, "demo.admin", adminPassword);
   await expect(page.getByRole("button", { name: "Governance & audit" })).toBeVisible();
   await page.getByRole("button", { name: "Governance & audit" }).click();
   await expect(page.getByRole("heading", { name: "Patient access grants" })).toBeVisible();
@@ -103,11 +82,7 @@ test("administrator can manage patient access grants and review audit events", a
 
 
 test("researcher receives read-only controls in the clinical workspace", async ({ page }) => {
-  await signInAsDemoUser(
-    page,
-    "demo.researcher",
-    "Demo-Research-Change-Me-2026!",
-  );
+  await signInAsDemoUser(page, "demo.researcher", researcherPassword);
   await expect(page.getByText("Alex Morgan").first()).toBeVisible();
   await expect(page.getByRole("button", { name: "Governance & audit" })).toHaveCount(0);
 
