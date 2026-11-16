@@ -83,3 +83,55 @@ def test_local_web_origin_passes_cors_preflight(client):
     })
     assert response.status_code == 200
     assert response.headers["access-control-allow-origin"] == "http://localhost:3000"
+
+
+def test_username_grant_fallback_can_be_disabled(client, monkeypatch):
+    from app.main import app
+    from app.auth import get_current_user
+
+    monkeypatch.setenv("ALLOW_USERNAME_PATIENT_GRANTS", "false")
+    app.dependency_overrides[get_current_user] = lambda: {
+        "sub": "different-immutable-subject",
+        "preferred_username": "demo.clinician",
+        "roles": ["clinician"],
+    }
+    response = client.get("/api/v1/patients/1")
+    assert response.status_code == 404
+
+
+def test_subject_grant_works_when_username_fallback_is_disabled(client, monkeypatch):
+    from app.main import app
+    from app.auth import get_current_user
+
+    monkeypatch.setenv("ALLOW_USERNAME_PATIENT_GRANTS", "false")
+    app.dependency_overrides[get_current_user] = lambda: {
+        "sub": "test-subject",
+        "preferred_username": "renamed.clinician",
+        "roles": ["clinician"],
+    }
+    from app.database import SessionLocal
+    from app.models import PatientAccessGrant
+    with SessionLocal() as db:
+        db.add(PatientAccessGrant(
+            patient_id=1, user_subject="test-subject",
+            username="old.username", access_level="read",
+        ))
+        db.commit()
+
+    response = client.get("/api/v1/patients/1")
+    assert response.status_code == 200
+
+
+def test_admin_cannot_create_username_only_grant_when_disabled(client, monkeypatch):
+    from app.main import app
+    from app.auth import get_current_user
+
+    monkeypatch.setenv("ALLOW_USERNAME_PATIENT_GRANTS", "false")
+    app.dependency_overrides[get_current_user] = lambda: {
+        "sub": "admin-subject", "preferred_username": "admin",
+        "roles": ["twinfixeno-admin"],
+    }
+    response = client.post("/api/v1/patients/1/access-grants", json={
+        "username": "some.user", "access_level": "read",
+    })
+    assert response.status_code == 400
