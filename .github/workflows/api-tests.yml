@@ -140,7 +140,48 @@ jobs:
           else:
               raise SystemExit("Protected API accepted a request without a bearer token")
 
+          # Prove HAPI FHIR resources survive replacement of the FHIR container.
           import json
+          patient = {
+              "resourceType": "Patient",
+              "id": "compose-persistence-check",
+              "active": True,
+              "identifier": [{"system": "https://twinfixeno.test/compose", "value": "compose-persistence-check"}],
+          }
+          patient_bytes = json.dumps(patient).encode("utf-8")
+          create_request = urllib.request.Request(
+              "http://127.0.0.1:8090/fhir/Patient/compose-persistence-check",
+              data=patient_bytes,
+              headers={"Content-Type": "application/fhir+json", "Accept": "application/fhir+json"},
+              method="PUT",
+          )
+          with urllib.request.urlopen(create_request, timeout=30) as response:
+              if response.status not in (200, 201):
+                  raise SystemExit(f"FHIR Patient write returned HTTP {response.status}")
+          print("PASS HAPI FHIR accepts a synthetic Patient write", flush=True)
+
+          import subprocess
+          subprocess.run(["docker", "compose", "restart", "fhir"], check=True)
+          patient_url = "http://127.0.0.1:8090/fhir/Patient/compose-persistence-check"
+          deadline = time.time() + 240
+          persisted = False
+          while time.time() < deadline:
+              try:
+                  with urllib.request.urlopen(
+                      urllib.request.Request(patient_url, headers={"Accept": "application/fhir+json"}),
+                      timeout=10,
+                  ) as response:
+                      body = json.loads(response.read().decode("utf-8"))
+                      if response.status == 200 and body.get("id") == "compose-persistence-check":
+                          persisted = True
+                          break
+              except Exception as exc:
+                  print(f"WAIT FHIR persistence after restart: {exc}", flush=True)
+              time.sleep(5)
+          if not persisted:
+              raise SystemExit("FHIR Patient was not readable after restarting HAPI FHIR; persistence check failed")
+          print("PASS HAPI FHIR Patient persisted in PostgreSQL after container restart", flush=True)
+
           initialize = {
               "jsonrpc": "2.0",
               "id": 1,
