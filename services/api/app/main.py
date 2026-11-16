@@ -1,4 +1,5 @@
 from datetime import date
+import logging
 import os
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -19,6 +20,8 @@ from .snapshots import create_immutable_snapshot, sha256_json
 from .timeline import timeline_item
 from .audit import write_audit
 from . import fhir, rag
+
+logger = logging.getLogger("twinfixeno.api")
 
 app = FastAPI(
     title="twinfixeno API",
@@ -412,14 +415,35 @@ def rag_index(patient_id: int, request: Request, db: Session = Depends(get_db), 
         audit(db, user, 'patient.rag.index', request, patient_id=patient_id, details=result)
         return result
     except Exception as exc:
-        raise HTTPException(status_code=503, detail=f'RAG indexing failed: {exc}') from exc
+        logger.exception("Local evidence indexing failed")
+        raise HTTPException(status_code=503, detail="Local evidence indexing service is unavailable; inspect API logs.") from exc
 
 @app.post('/api/v1/patients/{patient_id}/rag/query')
 def rag_query(patient_id: int, question: RagQuestion, request: Request, db: Session = Depends(get_db), user=Depends(get_current_user)):
     get_accessible_patient(db, patient_id, user)
     try:
         result = rag.answer_patient(db, patient_id, question.question, question.top_k)
-        audit(db, user, 'patient.rag.query', request, patient_id=patient_id, details={'retrieved_chunks': len(result.get('sources', []))})
+        source_fingerprints = [
+            __import__("hashlib").sha256(
+                f"{item.get('source_type', '')}:{item.get('source_id', '')}".encode("utf-8")
+            ).hexdigest()
+            for item in result.get("sources", [])
+        ]
+        audit(db, user, 'patient.rag.query', request, patient_id=patient_id, details={
+            "retrieved_chunks": len(result.get("sources", [])),
+            "source_fingerprints": source_fingerprints,
+            "prompt_id": result.get("prompt_id"),
+            "prompt_version": result.get("prompt_version"),
+            "retrieval_version": result.get("retrieval_version"),
+            "index_schema_version": result.get("index_schema_version"),
+            "chat_model": result.get("model"),
+            "chat_model_digest": result.get("chat_model_digest"),
+            "embedding_model": result.get("embedding_model"),
+            "embedding_model_digest": result.get("embedding_model_digest"),
+            "answer_sha256": result.get("answer_sha256"),
+            "citation_validation": result.get("citation_validation"),
+        })
         return result
     except Exception as exc:
-        raise HTTPException(status_code=503, detail=f'RAG query failed: {exc}') from exc
+        logger.exception("Local evidence query failed")
+        raise HTTPException(status_code=503, detail="Local evidence query service is unavailable; inspect API logs.") from exc
