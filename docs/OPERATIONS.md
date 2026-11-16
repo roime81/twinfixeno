@@ -13,7 +13,7 @@ docker compose up --build -d
 docker compose ps
 \`\`\`
 
-The API container runs `alembic upgrade head` before serving requests; the current baseline safely adopts an existing MVP schema and installs PostgreSQL immutability triggers. `SEED_DEMO_DATA=true` loads only the synthetic demonstration patient and grants. Set it to `false` to skip demo data in a non-demo environment. The first run downloads the images and builds the web/API/MCP containers. The Compose dependency graph waits for PostgreSQL, Keycloak and HAPI FHIR readiness, then pulls the Ollama chat and embedding models before starting the API and web workspace. The first model download can take several minutes and requires several GB of network transfer and disk space. The browser sends API traffic through APISIX on port 9080; FastAPI port 8000 is retained for OpenAPI and diagnostics.
+The API container runs `alembic upgrade head` before serving requests; the initial metadata baseline creates missing tables and installs PostgreSQL immutability triggers without dropping pre-existing tables. It does not alter columns in an already-created table, so schema drift must be handled through a reviewed migration. `SEED_DEMO_DATA=true` loads only the synthetic demonstration patient and grants. Set it to `false` to skip demo data in a non-demo environment. The first run downloads the images and builds the web/API/MCP containers. The Compose dependency graph waits for PostgreSQL, Keycloak, HAPI FHIR and Qdrant readiness, then pulls the Ollama chat and embedding models before starting the API and web workspace. The first model download can take several minutes and requires several GB of network transfer and disk space. The browser sends API traffic through APISIX on port 9080; FastAPI port 8000 is retained for OpenAPI and diagnostics.
 
 ## Local URLs
 
@@ -30,15 +30,6 @@ The API container runs `alembic upgrade head` before serving requests; the curre
 | MCP Streamable HTTP | http://localhost:8001/mcp |
 
 All host port bindings are restricted to loopback (127.0.0.1). The browser loads API and Keycloak addresses from the Next.js /runtime-config route, so WEB_API_BASE_URL and WEB_KEYCLOAK_URL in .env are read when the container starts, not baked into the JavaScript bundle.
-
-## Demo users
-
-The development realm includes:
-- demo.admin — administrator and patient grant management.
-- demo.clinician — clinician with write access to the seeded synthetic patient.
-- demo.researcher — read-only access to the seeded synthetic patient.
-
-Keycloak forces a password change at first login. These demo identities and bootstrap credentials are for local development only.
 
 ## Demo identities
 
