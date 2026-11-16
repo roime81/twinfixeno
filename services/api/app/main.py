@@ -1,4 +1,5 @@
 from datetime import date
+import hashlib
 import logging
 import os
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
@@ -514,7 +515,7 @@ def rag_query(patient_id: int, question: RagQuestion, request: Request, db: Sess
             span.set_attribute("ai.answer.sha256", result.get("answer_sha256", ""))
         RAG_QUERY_COUNTER.labels(outcome="success").inc()
         source_fingerprints = [
-            __import__("hashlib").sha256(
+            hashlib.sha256(
                 f"{item.get('source_type', '')}:{item.get('source_id', '')}".encode("utf-8")
             ).hexdigest()
             for item in result.get("sources", [])
