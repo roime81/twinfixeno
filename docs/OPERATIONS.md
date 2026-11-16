@@ -6,12 +6,12 @@ Prerequisites: Docker Desktop with the Linux container engine enabled (WSL 2 on 
 
 From the repository root:
 
-\`\`\`powershell
+```powershell
 if (-not (Test-Path .env)) { Copy-Item .env.example .env }
 docker compose config
 docker compose up --build -d
 docker compose ps
-\`\`\`
+```
 
 The API container runs `alembic upgrade head` before serving requests; the initial metadata baseline creates missing tables and installs PostgreSQL immutability triggers without dropping pre-existing tables. It does not alter columns in an already-created table, so schema drift must be handled through a reviewed migration. `SEED_DEMO_DATA=true` loads only the synthetic demonstration patient and grants. Set it to `false` to skip demo data in a non-demo environment. The first run downloads the images and builds the web/API/MCP containers. The Compose dependency graph waits for PostgreSQL, Keycloak, HAPI FHIR and Qdrant readiness, then pulls the Ollama chat and embedding models before starting the API and web workspace. The first model download can take several minutes and requires several GB of network transfer and disk space. The browser sends API traffic through APISIX on port 9080; FastAPI port 8000 is retained for OpenAPI and diagnostics.
 
@@ -47,13 +47,13 @@ Keycloak forces a password change at first login. These credentials are public d
 
 ## Useful commands
 
-\`\`\`powershell
+```powershell
 docker compose ps
 docker compose logs -f web api keycloak fhir
 docker compose logs --tail 200 api
 docker compose restart api
 docker compose down
-\`\`\`
+```
 
 The application, Keycloak identity and HAPI FHIR data stores run in separate PostgreSQL services, each backed by its own named volume. All three preserve data across ordinary container recreation. Do not use docker compose down -v unless you intend to delete the application database, identity store, FHIR resources, AI vectors, model cache and snapshot history.
 
