@@ -7,7 +7,7 @@ OLLAMA=os.getenv("OLLAMA_URL","http://ollama:11434").rstrip("/")
 QDRANT=os.getenv("QDRANT_URL","http://qdrant:6333").rstrip("/")
 COLLECTION=os.getenv("QDRANT_COLLECTION","twinfixeno_clinical")
 EMBED=os.getenv("OLLAMA_EMBED_MODEL","nomic-embed-text")
-CHAT=os.getenv("OLLAMA_CHAT_MODEL","llama3.2:3b")
+CHAT=os.getenv("OLLAMA_CHAT_MODEL","qwen2.5:3b")
 TIMEOUT=int(os.getenv("AI_REQUEST_TIMEOUT","120"))
 def call(method,url,**kw):
  r=requests.request(method,url,timeout=TIMEOUT,**kw); r.raise_for_status(); return r

@@ -78,7 +78,7 @@ Never load identifiable patient data into this local demo stack.
 
 ## Local LLM, RAG and MCP
 
-Compose starts Ollama, downloads `nomic-embed-text` and `llama3.2:3b` into the persistent model volume, starts Qdrant with persistent vector storage, and starts the MCP Streamable HTTP server. First startup downloads several GB and can take several minutes.
+Compose starts Ollama, downloads `nomic-embed-text` and `qwen2.5:3b` into the persistent model volume, starts Qdrant with persistent vector storage, and starts the MCP Streamable HTTP server. First startup downloads several GB and can take several minutes.
 
 After login, check `GET /api/v1/ai/status`; index a patient using `POST /api/v1/patients/{id}/rag/index` (write grant required), then query `POST /api/v1/patients/{id}/rag/query` with `{"question":"Summarise the recorded observations","top_k":5}`. Results include source records and SHA-256 hashes. MCP URL: `http://localhost:8001/mcp`; tools: `get_patient_timeline`, `index_patient_evidence`, `ask_patient_evidence`. MCP forwards the caller's bearer token to the API, so normal Keycloak roles and patient grants apply.
 
