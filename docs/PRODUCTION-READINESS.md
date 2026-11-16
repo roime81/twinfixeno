@@ -23,7 +23,7 @@ The integrated Compose stack is a runnable synthetic-data development/review env
 
 ### Identity and network security
 - Replace Keycloak `start-dev` and the development realm with a production Keycloak deployment and reviewed realm/client configuration.
-- Set `SEED_DEMO_DATA=false`, remove demo identities and bootstrap passwords, and replace the development realm. Enforce approved MFA, password, session, account lifecycle and privileged-access controls.
+- Set `SEED_DEMO_DATA=false` and `ALLOW_USERNAME_PATIENT_GRANTS=false`, remove demo identities and bootstrap passwords, and replace the development realm. Enforce approved MFA, password, session, account lifecycle and privileged-access controls.
 - Deploy TLS for every browser and service boundary. Configure exact public hostnames, OIDC issuer, redirect URIs, trusted proxy and cookie settings.
 - Do not expose API, HAPI FHIR or database ports directly to untrusted networks. Put ingress behind an approved reverse proxy/WAF and apply gateway rate limits and request-size limits.
 - Rotate all default credentials, use a secret manager, and verify no secrets are present in Compose files, images, CI logs or Git history.
