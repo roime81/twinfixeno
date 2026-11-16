@@ -311,7 +311,13 @@ def get_snapshot_artifact(patient_id: int, snapshot_id: int, request: Request, d
 @app.post("/api/v1/patients/{patient_id}/snapshots", status_code=201)
 def create_snapshot(patient_id: int, request: Request, db: Session = Depends(get_db), user=Depends(get_current_user)):
     patient = get_accessible_patient(db, patient_id, user, write=True)
-    snapshot, artifact = create_immutable_snapshot(db, patient_id, user.get("preferred_username") or user.get("sub"))
+    try:
+        snapshot, artifact = create_immutable_snapshot(db, patient_id, user.get("preferred_username") or user.get("sub"))
+        SNAPSHOT_COUNTER.labels(outcome="success").inc()
+    except Exception:
+        SNAPSHOT_COUNTER.labels(outcome="error").inc()
+        logger.exception("Twin snapshot creation failed")
+        raise
     audit(db, user, "patient.snapshot.create", request, patient_id=patient_id, resource_type="TwinSnapshot", resource_id=snapshot.id, details={"version": snapshot.version, "content_sha256": artifact.content_sha256})
     return {
         "id": snapshot.id, "version": snapshot.version, "summary": snapshot.summary,
