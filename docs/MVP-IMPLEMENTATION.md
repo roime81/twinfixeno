@@ -10,6 +10,9 @@ The repository now runs as one Docker Compose application stack:
 - Keycloak 26 OIDC identity service with browser PKCE.
 - HAPI FHIR R4 server.
 - Apache APISIX API gateway.
+- Ollama local inference (Qwen 2.5 3B chat model and nomic-embed-text embedding model).
+- Qdrant patient-scoped vector store.
+- MCP Streamable HTTP server with three bearer-token-forwarding tools.
 
 Start the synthetic-data environment from the repository root:
 
@@ -20,7 +23,7 @@ docker compose up --build -d
 docker compose ps
 ```
 
-The supported local URLs are:
+The browser UI sends API traffic through APISIX at port 9080. The direct FastAPI port 8000 is provided for OpenAPI and diagnostics. The supported local URLs are:
 
 | Component | URL |
 |---|---|
@@ -30,7 +33,7 @@ The supported local URLs are:
 | Keycloak | http://localhost:8081 |
 | HAPI FHIR metadata | http://localhost:8090/fhir/metadata |
 
-Compose includes restart policies, separate persistent PostgreSQL databases for the application and Keycloak, database health checks, and one-shot curl readiness gates for Keycloak and HAPI FHIR before the API starts. The web workspace waits for the API health check. All host ports bind to `127.0.0.1` for local-only access. The API has `/health` and database-backed `/health/ready` endpoints. Browser-visible API and Keycloak URLs are loaded at runtime from `/runtime-config`, not embedded at image build time.
+Compose includes restart policies, separate persistent PostgreSQL databases for the application and Keycloak, database health checks, and one-shot curl readiness gates for Keycloak and HAPI FHIR before the API starts. The API image includes Alembic configuration and migrations, applies `alembic upgrade head` before starting, and seeds a synthetic patient only when `SEED_DEMO_DATA=true`. The local example defaults to `true`; set it to `false` when building a non-demo environment. The web workspace waits for the API health check and APISIX. All host ports bind to `127.0.0.1` for local-only access. The API has `/health` and database-backed `/health/ready` endpoints. Browser-visible API and Keycloak URLs are loaded at runtime from `/runtime-config`, not embedded at image build time.
 
 ## Implemented application capabilities
 
@@ -71,11 +74,22 @@ Compose includes restart policies, separate persistent PostgreSQL databases for 
 - All results are prominently labelled **Hypothetical scenario — not a clinical prediction**.
 - This is an arithmetic scenario tool, not a validated physiological or disease-progression model.
 
-### Evidence assistant
-- A local deterministic context report summarises available observations and imported FHIR resource counts/ranges.
-- The report states the engine identifier and limitations.
-- No patient data is sent to an external model provider.
-- This feature is not an LLM, RAG pipeline or clinical decision-support system. The private LLM/RAG milestone remains outstanding.
+### Local evidence assistant and RAG
+- Ollama serves the local Qwen 2.5 3B chat model and nomic-embed-text embeddings.
+- Qdrant stores embeddings with a patient ID filter applied at retrieval time.
+- The API builds evidence chunks from the selected patient's synthetic profile, local observations, imported FHIR resources and snapshot artifacts.
+- The UI checks AI readiness on entering the Evidence Assistant, lets a write-authorised user index patient evidence, and enables question answering when Ollama, both models and Qdrant are ready.
+- Answers include retrieved source type, source ID, relevance score and SHA-256 content hash.
+- The deterministic local context report remains available as a fallback.
+- This is a synthetic-data engineering demonstration, not a clinically validated assistant. Prompt instructions are not a security boundary; no diagnosis, triage or treatment decisions may rely on the output.
+- Re-index after syncing additional FHIR records or creating new snapshots. File/PDF ingestion, systematic evaluation, prompt-injection testing and model/prompt/tool version governance are outstanding.
+
+### MCP integration
+- MCP Streamable HTTP endpoint: `http://localhost:8001/mcp`.
+- Tools: `get_patient_timeline`, `index_patient_evidence`, and `ask_patient_evidence`.
+- MCP requires the calling client's Keycloak bearer token and forwards it to FastAPI; the API remains the authorisation enforcement point.
+- Timeline and evidence query require patient read access; evidence indexing requires patient write access.
+- This is a small integration surface, not a general-purpose autonomous agent platform. MCP transport/browser use still requires an MCP-compatible client.
 
 ### Governance and audit
 - Audit events are recorded for snapshot creation and inspection, patient observation/timeline/context access, patient creation, simulations, FHIR sync and grant changes.
@@ -97,6 +111,9 @@ All `/api/v1` routes require a valid Keycloak bearer token by default.
 | `GET /api/v1/patients/{id}/observations` | Read local observations |
 | `GET /api/v1/patients/{id}/timeline` | Read imported FHIR timeline |
 | `GET /api/v1/patients/{id}/insights` | Generate local deterministic context report |
+| `GET /api/v1/ai/status` | Check local Ollama, model and Qdrant status |
+| `POST /api/v1/patients/{id}/rag/index` | Index patient evidence (write access) |
+| `POST /api/v1/patients/{id}/rag/query` | Query patient evidence (read access) |
 | `POST /api/v1/patients/{id}/fhir/sync` | Publish local observations and import supported resources |
 | `GET /api/v1/patients/{id}/fhir` | Search the FHIR Patient |
 | `GET /api/v1/patients/{id}/snapshots` | List twin snapshots |
@@ -119,12 +136,14 @@ These credentials are development-only. Keycloak forces a password change on fir
 
 ## Automated tests
 
-The API test suite covers patient access isolation, patient permission reporting, registry create/search, administrator grant management, simulation persistence/formula output, FHIR resource import and patient-reference verification, snapshot integrity/immutability and audit event creation.
+The API test suite covers patient access isolation, patient permission reporting, registry create/search, administrator grant management, simulation persistence/formula output, FHIR resource import and patient-reference verification, snapshot integrity/immutability, audit event creation, and RAG readiness/index/query role and patient-boundary behaviour. Alembic migration upgrade/downgrade/upgrade is exercised in CI.
 
 The live HAPI integration test also publishes the six local synthetic observations to a running HAPI FHIR R4 server before exercising resource ingestion. CI now includes:
+- Alembic upgrade → downgrade → upgrade check.
 - Python API tests plus live HAPI FHIR integration.
+- RAG API role and patient-access tests.
 - Next.js production build.
-- Compose graph validation and API/web container image builds.
+- Docker Compose configuration validation, full stack image build/start and service/API-gateway smoke probes.
 
 A passing API test suite does not certify the browser experience, infrastructure security, clinical correctness or production readiness. The new combined CI results must be reviewed for the commit that contains these changes.
 
@@ -142,13 +161,12 @@ pytest -q
 
 The following work is not represented as complete:
 
-- Formal Alembic migrations and upgrade/downgrade testing.
+- Explicit reviewed Alembic migration revisions for future schema changes and a rehearsed PostgreSQL deployment upgrade/rollback strategy (an initial baseline and SQLite CI cycle now exist).
 - Production Keycloak configuration, TLS, secrets management and non-demo identities.
 - HAPI FHIR production database, authentication, SMART-on-FHIR/OAuth policy, terminology/profile validation, backup and HA.
 - Broader FHIR coverage such as MedicationRequest, DiagnosticReport, CarePlan, DocumentReference and AllergyIntolerance.
 - Clinically validated simulation models, review workflow and model version governance.
-- Private local LLM runtime, patient-scoped RAG, evidence citations and model/prompt/tool version registry.
-- MCP server with identity propagation, patient-level authorisation and audit enforcement.
+- Production model/prompt/tool version governance, evaluation, prompt-injection defence and full AI traceability (local synthetic RAG and a limited authenticated MCP service are implemented).
 - Dedicated observability stack: OpenTelemetry collector, Prometheus, Grafana, centralised logs, dashboards and alerting.
 - Security review, threat modelling, penetration testing, disaster recovery exercise and clinical safety/regulatory assessment.
 - Full browser E2E tests across login, registry, FHIR sync, snapshot, scenario and governance flows.
