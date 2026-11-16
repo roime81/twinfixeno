@@ -8,9 +8,18 @@
   "resetPasswordAllowed": false,
   "roles": {
     "realm": [
-      {"name": "twinfixeno-admin", "description": "Development platform administrator"},
-      {"name": "clinician", "description": "Authorised clinical workspace user"},
-      {"name": "researcher", "description": "Authorised synthetic-data researcher"}
+      {
+        "name": "twinfixeno-admin",
+        "description": "Development platform administrator"
+      },
+      {
+        "name": "clinician",
+        "description": "Authorised clinical workspace user"
+      },
+      {
+        "name": "researcher",
+        "description": "Authorised synthetic-data researcher"
+      }
     ]
   },
   "clients": [
@@ -24,8 +33,12 @@
       "directAccessGrantsEnabled": false,
       "implicitFlowEnabled": false,
       "serviceAccountsEnabled": false,
-      "redirectUris": ["http://localhost:3000/*"],
-      "webOrigins": ["http://localhost:3000"],
+      "redirectUris": [
+        "http://localhost:3000/*"
+      ],
+      "webOrigins": [
+        "http://localhost:3000"
+      ],
       "protocolMappers": [
         {
           "name": "twinfixeno API audience",
@@ -61,8 +74,52 @@
       "emailVerified": true,
       "firstName": "Demo",
       "lastName": "Clinician",
-      "credentials": [{"type": "password", "value": "Demo-Only-Change-Me-2026!", "temporary": true}],
-      "realmRoles": ["clinician"]
+      "credentials": [
+        {
+          "type": "password",
+          "value": "Demo-Only-Change-Me-2026!",
+          "temporary": true
+        }
+      ],
+      "realmRoles": [
+        "clinician"
+      ]
+    },
+    {
+      "username": "demo.admin",
+      "enabled": true,
+      "email": "demo.admin@example.test",
+      "emailVerified": true,
+      "firstName": "Demo",
+      "lastName": "admin",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "Demo-Admin-Change-Me-2026!",
+          "temporary": true
+        }
+      ],
+      "realmRoles": [
+        "twinfixeno-admin"
+      ]
+    },
+    {
+      "username": "demo.researcher",
+      "enabled": true,
+      "email": "demo.researcher@example.test",
+      "emailVerified": true,
+      "firstName": "Demo",
+      "lastName": "researcher",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "Demo-Research-Change-Me-2026!",
+          "temporary": true
+        }
+      ],
+      "realmRoles": [
+        "researcher"
+      ]
     }
   ]
 }
