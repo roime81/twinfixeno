@@ -32,4 +32,5 @@ jobs:
         env:
           DATABASE_URL: sqlite:///./ci-test.db
           AUTH_REQUIRED: "false"
+          PYTHONPATH: ${{ github.workspace }}/services/api
         run: pytest -q
