@@ -28,6 +28,12 @@ def seed():
         ))
         if grant is None:
             db.add(PatientAccessGrant(patient_id=patient.id, username="demo.clinician", access_level="write"))
+        researcher_grant = db.scalar(select(PatientAccessGrant).where(
+            PatientAccessGrant.patient_id == patient.id,
+            PatientAccessGrant.username == "demo.researcher"
+        ))
+        if researcher_grant is None:
+            db.add(PatientAccessGrant(patient_id=patient.id, username="demo.researcher", access_level="read"))
         db.commit()
 
 if __name__ == "__main__":
