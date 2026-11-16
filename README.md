@@ -4,7 +4,7 @@
 
 TWINFixeno is an early-stage, design-driven MVP for creating a longitudinal digital representation of a patient's health journey. It brings together interoperable clinical data, versioned patient-state snapshots, explainable analytics, hypothetical scenario exploration, private local language models and governed Model Context Protocol (MCP) tools.
 
-> **Project status:** Integrated synthetic-data MVP release candidate. The web workspace now has functional registry, timeline, simulation, snapshot and administrator governance views; the API supports patient search/creation, patient permissions, persistent scenario runs, audit events and FHIR publication/import. The current Evidence Assistant is deterministic local summarisation, not an LLM. Production readiness is explicitly not claimed; see [Production readiness assessment](docs/PRODUCTION-READINESS.md).
+> **Project status:** Integrated synthetic-data development MVP. The web workspace provides patient registry, timeline, illustrative simulation, snapshot inspection, governance and a local Evidence Assistant. The AI path uses Ollama (Qwen 2.5 3B), `nomic-embed-text` embeddings and patient-filtered Qdrant retrieval; MCP exposes three authenticated, API-authorised tools. This is still a synthetic-data engineering environment, not a validated clinical product or production deployment. See [Production readiness assessment](docs/PRODUCTION-READINESS.md).
 
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![Status](https://img.shields.io/badge/status-MVP%20in%20development-orange.svg)](#roadmap)
@@ -77,9 +77,9 @@ The initial use case is a synthetic chronic-care patient journey. The MVP is int
 | Twin visualisation | Patient summary and latest observations | Basic MVP |
 | Simulation studio | Persisted percentage-delta scenario with explicit assumptions | Implemented (not a clinical model) |
 | Audit | Application events for patient access and key mutations | Basic MVP |
-| Private AI copilot | Local LLM with patient-scoped retrieval and citations | Not implemented |
-| Evidence assistant | Local deterministic context report (no model inference) | Implemented |
-| MCP server | Governed read and simulation tools | Not implemented |
+| Private AI copilot | Local Ollama LLM with patient-scoped retrieval and source evidence | Implemented for synthetic-data MVP; not clinically validated |
+| Evidence assistant | Local RAG question answering plus deterministic fallback report | Implemented for synthetic-data MVP |
+| MCP server | Streamable HTTP with timeline, indexing and evidence-query tools; caller token forwarded to API | Implemented for MVP; only three tools |
 | Observability | Structured logs, metrics and distributed traces | Not implemented |
 
 ### Intended user journey
@@ -137,34 +137,21 @@ Screenshots must use synthetic data only. Do not commit real patient records, na
 
 ```mermaid
 flowchart TB
-    U[Clinician / Research User] --> WEB[Next.js Web Application]
-    WEB --> GW[Apache APISIX API Gateway]
-
+    U[Clinician / Research User] --> WEB[Next.js Web Workspace]
+    WEB -->|OIDC PKCE| IDP[Keycloak]
+    WEB -->|Browser API requests| GW[Apache APISIX]
     GW --> API[FastAPI Application API]
-    API --> IDP[Keycloak OIDC]
+    API --> PG[(PostgreSQL)]
     API --> FHIR[HAPI FHIR R4]
-    API --> TWIN[Digital Twin Engine]
-    API --> SIM[Simulation Engine]
-    API --> AUDIT[Audit Service]
-
-    TWIN --> PG[(PostgreSQL)]
-    SIM --> PG
-    API --> OBJ[(SeaweedFS Object Storage)]
-    API --> VDB[(Qdrant Vector Database)]
-    FHIR --> PG
-
-    WEB --> AI[AI Orchestrator / LangGraph]
-    AI --> LLM[Local LLM: Ollama or vLLM]
-    AI --> RET[RAG Retrieval]
-    RET --> VDB
-    AI --> MCP[MCP Server]
-    MCP --> API
-
-    API --> OTEL[OpenTelemetry]
-    AI --> OTEL
-    MCP --> OTEL
-    OTEL --> OBS[Prometheus / Grafana / Loki]
+    API --> VDB[(Qdrant)]
+    API --> LLM[Ollama: Qwen 2.5 3B]
+    API --> EMB[Ollama: nomic-embed-text]
+    MCP[MCP Streamable HTTP] -->|Forwards caller bearer token| API
+    API --> AUDIT[Application Audit Events]
+    API --> TWIN[Snapshot / Timeline / Simulation Modules]
 ```
+
+The browser uses the APISIX gateway at `http://localhost:9080` for API requests. The direct FastAPI port at `http://localhost:8000` is retained for local OpenAPI and diagnostics. Keycloak is reached by the browser at `http://localhost:8081`; the API validates tokens using its internal Keycloak JWKS URL.
 
 ### Deployment topology
 
@@ -185,34 +172,25 @@ Kubernetes is deliberately out of scope for the first milestone. It can be intro
 
 ## Technology stack
 
-The project favours mature, self-hostable open-source components. Exact versions should be pinned in deployment manifests and lockfiles as implementation begins.
+The table distinguishes components actually present in the current Compose stack from future architecture options. Do not infer that a proposed technology is deployed merely because it appears in an architectural discussion.
 
-| Layer | Proposed technology | Responsibility |
+| Layer | Implemented component | Current responsibility / status |
 |---|---|---|
-| Web framework | Next.js, React, TypeScript | Application shell and user experience |
-| UI system | Tailwind CSS, shadcn/ui | Design system and reusable components |
-| Visualisation | Apache ECharts | Clinical trends and scenario comparisons |
-| Graph/workflow UI | React Flow | Optional relationship and workflow views |
-| API/backend | Python, FastAPI, Pydantic | REST APIs and domain services |
-| ORM/migrations | SQLAlchemy, Alembic | Persistence and schema evolution |
-| Primary database | PostgreSQL | Transactional application data and snapshots |
-| Healthcare standard | HL7 FHIR R4 | Clinical interoperability |
-| FHIR server | HAPI FHIR | FHIR API and resource persistence |
-| API gateway | Apache APISIX | Routing, rate limits and gateway policies |
-| Identity | Keycloak | OIDC authentication and role claims |
-| Vector database | Qdrant | Embedding storage and semantic retrieval |
-| Object storage | SeaweedFS | Clinical document and object storage |
-| AI orchestration | LangGraph | Explicit, stateful AI workflows |
-| Local inference | Ollama (development), vLLM (serving) | Private model inference |
-| Initial model | Qwen family model, licence verified per artifact | Local language-model capability |
-| Agent protocol | MCP Python SDK | Governed tool integration |
-| Background work | Python worker; queue selected during implementation | Asynchronous processing |
-| Containers | Docker Compose / Podman | Local and private deployment |
-| Telemetry | OpenTelemetry | Traces, metrics and instrumentation |
-| Metrics | Prometheus | Metrics collection |
-| Dashboards | Grafana | Operational dashboards |
-| Logs | Loki | Centralised application logs |
-| Tests | Pytest, Vitest, Playwright | Backend, frontend and end-to-end tests |
+| Web | Next.js 15, React 19, TypeScript | Patient workspace and runtime-configured API/OIDC |
+| API | FastAPI, Pydantic, SQLAlchemy | Patient, access, FHIR, snapshot, simulation, audit and RAG routes |
+| Identity | Keycloak 26.1.4, OIDC PKCE, JWT/JWKS validation | Development realm, roles and browser login |
+| Primary database | PostgreSQL 16 | Patient, grants, FHIR index, snapshots, simulations and audit metadata |
+| Healthcare interoperability | HAPI FHIR 7.4, FHIR R4 | Patient upsert, Observation publication and Observation/Condition/Encounter import |
+| API gateway | Apache APISIX 3.9.1 | Browser API routing to FastAPI |
+| Local inference | Ollama 0.6.8 | Local chat and embeddings |
+| Chat model | Qwen 2.5 3B | Local evidence-answer generation; synthetic-data use only |
+| Embeddings | nomic-embed-text | Local embedding generation |
+| Vector store | Qdrant 1.13.2 | Patient-filtered retrieval |
+| Tool protocol | Python MCP SDK / FastMCP | Timeline, evidence indexing and evidence query tools |
+| Containers | Docker Compose | Local bundled development environment |
+| Observability | Not yet implemented | No integrated OpenTelemetry/Prometheus/Grafana/Loki stack |
+| Clinical simulation | Not yet implemented | Current scenario engine is a bounded percentage-delta calculation, not physiology |
+| Database migrations | Not yet implemented | Runtime schema creation remains; Alembic and tested migration paths are required before production |
 
 ### Open-source and licence policy
 
@@ -228,55 +206,23 @@ The intended project licence is Apache License 2.0. This does not automatically 
 
 ## Repository structure
 
-The target monorepo layout is:
+The current repository is a compact monorepo, not the larger target architecture shown in early design drafts:
 
 ```text
 twinfixeno/
-├── README.md
-├── LICENSE
-├── CONTRIBUTING.md
-├── SECURITY.md
 ├── .env.example
-├── .gitignore
 ├── compose.yaml
-├── docs/
-│   ├── PRODUCT-VISION.md
-│   ├── REQUIREMENTS.md
-│   ├── TECHNICAL-ARCHITECTURE.md
-│   ├── UI-UX-SPECIFICATION.md
-│   ├── DATA-MODEL.md
-│   ├── API-SPECIFICATION.md
-│   ├── AI-MCP-SPECIFICATION.md
-│   ├── SECURITY-GOVERNANCE.md
-│   ├── MVP-ROADMAP.md
-│   └── screenshots/
-├── apps/
-│   └── web/
-├── services/
-│   ├── api/
-│   ├── patient-service/
-│   ├── twin-engine/
-│   ├── simulation-engine/
-│   ├── ai-orchestrator/
-│   ├── mcp-server/
-│   └── worker/
-├── database/
-│   ├── migrations/
-│   ├── schemas/
-│   └── seed/
+├── apps/web/                 # Next.js workspace
+├── services/api/             # FastAPI domain/API service and tests
+├── services/mcp/             # MCP Streamable HTTP server
 ├── infrastructure/
 │   ├── apisix/
-│   ├── keycloak/
-│   ├── fhir/
-│   ├── observability/
-│   └── containers/
-├── tests/
-│   ├── unit/
-│   ├── integration/
-│   ├── security/
-│   └── e2e/
-└── .github/
-    └── workflows/
+│   └── keycloak/
+├── docs/
+│   ├── MVP-IMPLEMENTATION.md
+│   ├── OPERATIONS.md
+│   └── PRODUCTION-READINESS.md
+└── .github/workflows/        # API, web-build and Compose smoke CI
 ```
 
 The repository is populated incrementally. See [MVP implementation status](docs/MVP-IMPLEMENTATION.md) for implementation details, API routes, local test instructions and remaining production-hardening work.
@@ -326,11 +272,12 @@ Update local development values as required. Change the Keycloak bootstrap admin
 
 From the repository root, with Docker Desktop or Docker Engine running:
 
-```bash
-docker compose pull
-docker compose build
-docker compose up -d
+```powershell
+if (-not (Test-Path .env)) { Copy-Item .env.example .env }
+docker compose up --build -d
 ```
+
+This starts the application, Keycloak, PostgreSQL, HAPI FHIR, APISIX, Ollama, Qdrant and MCP service as one Compose stack. On the first run, Ollama downloads the chat and embedding models; API and web startup are gated on that model-pull job. The first boot can therefore take several minutes and requires several GB of download/storage.
 
 Check service status:
 
@@ -368,7 +315,7 @@ Keycloak requires a password change on first sign-in. These credentials are for 
 
 ### 5. Database and demo data
 
-The API creates the application schema on startup and seeds a fictional patient, six synthetic observations, and patient grants for the demo clinician and researcher. Formal Alembic migrations remain a follow-up. Keycloak imports the development realm and HAPI FHIR runs as a separate service.
+The API currently creates its SQLAlchemy schema on startup and seeds a fictional patient, six synthetic observations, and grants for the demo clinician and researcher. This is convenient for local evaluation but is not a production migration strategy. Keycloak imports the development realm; HAPI FHIR runs as a separate container.
 
 ## Configuration
 
@@ -404,16 +351,16 @@ For a step-by-step Docker Compose quick start, service URLs, demo roles and trou
 
 These are the development endpoints defined by the current `compose.yaml`. Keycloak redirects the browser to sign in; the API's protected routes require the resulting access token.
 
-| Component | Proposed URL |
+| Component | Local URL |
 |---|---|
-| Web application | http://localhost:3000 |
-| FastAPI / OpenAPI | http://localhost:8000/docs |
-| APISIX gateway | http://localhost:9080 |
-| HAPI FHIR | http://localhost:8090/fhir/metadata |
+| Web workspace | http://localhost:3000 |
+| Browser API gateway (used by the web app) | http://localhost:9080 |
+| FastAPI / OpenAPI (direct diagnostics) | http://localhost:8000/docs |
 | Keycloak | http://localhost:8081 |
-| Qdrant dashboard/API | http://localhost:6333/dashboard |
-| Grafana | http://localhost:3001 |
-| Prometheus | http://localhost:9090 |
+| HAPI FHIR R4 | http://localhost:8090/fhir/metadata |
+| Ollama API | http://localhost:11434 |
+| Qdrant dashboard | http://localhost:6333/dashboard |
+| MCP Streamable HTTP | http://localhost:8001/mcp |
 
 ### Developer workflow
 
@@ -461,16 +408,17 @@ After signing in, use **Sync FHIR** on the patient workspace. The API upserts th
 
 FHIR resources are matched to the FHIR Patient reference before they are stored. Imported resources retain FHIR version metadata and content hashes. The APISIX gateway exposes these under `http://localhost:9080`; HAPI FHIR is available at `http://localhost:8090/fhir/metadata`.
 
-### Local LLM
+### Local AI and RAG
 
-For a host-based Ollama development setup, install Ollama using its official installation instructions, then pull a model whose exact artifact licence has been reviewed.
+The bundled Compose profile starts Ollama and downloads the configured chat model (`qwen2.5:3b`) and embedding model (`nomic-embed-text`). Qdrant stores patient-scoped evidence vectors. In the Evidence Assistant screen:
 
-```bash
-ollama pull <verified-model-name>
-ollama list
-```
+1. Open **Check local AI status** (the page also checks automatically when opened).
+2. Wait for both models and Qdrant to report ready.
+3. Select **Index this patient's records** using a write-authorised account.
+4. Ask a question about those indexed records. The response includes retrieved source references and hashes.
+5. Use the deterministic context report as a non-LLM fallback.
 
-The model name is deliberately not hard-coded here: model tags and licences must be verified before use. In container deployments, ensure the inference service is reachable only from authorised internal services.
+The API endpoints are `GET /api/v1/ai/status`, `POST /api/v1/patients/{id}/rag/index` and `POST /api/v1/patients/{id}/rag/query`. Retrieval is filtered by patient ID, and the MCP server forwards the caller's bearer token so API role and patient-grant checks remain in force. This is an engineering demonstration over synthetic records; prompt instructions and citations do not constitute clinical safety controls.
 
 ## Snapshots and screenshots
 
@@ -599,34 +547,33 @@ Future physiological or disease-progression models require domain-expert design,
 
 ## Private AI and MCP
 
-### AI workflow
+### Implemented local evidence workflow
 
-The planned AI workflow is:
+The Compose environment includes Ollama, Qwen 2.5 3B, nomic-embed-text and Qdrant. The API builds evidence chunks from the selected patient's local profile, observations, imported FHIR records and snapshots. Retrieval applies a patient-ID filter; model answers are returned with the retrieved source type, source identifier, relevance score and content hash.
 
-1. Authenticate the user and resolve the authorised patient context.
-2. Retrieve only records the user is permitted to access.
-3. Build a bounded, patient-scoped context.
-4. Retrieve relevant evidence from structured records and approved documents.
-5. Invoke the local LLM through the AI orchestrator.
-6. Return an answer with source references and timestamps.
-7. Record model, prompt, retrieval and tool metadata in the audit trail.
+Current API workflow:
 
-The LLM must not invent missing records, silently infer diagnoses or convert hypothetical simulation outputs into clinical recommendations.
+- `GET /api/v1/ai/status` — report Ollama, model and Qdrant availability.
+- `POST /api/v1/patients/{id}/rag/index` — index authorised patient records (write access required).
+- `POST /api/v1/patients/{id}/rag/query` — query the indexed evidence (read access required).
 
-### Initial MCP tools
+Re-index after importing new FHIR records or creating a new snapshot. The current implementation does not index uploaded PDFs or arbitrary documents, perform clinical coding reconciliation, evaluate answer quality, or preserve complete model/prompt/tool version telemetry. Retrieved evidence and model-generated prose must be reviewed by a qualified human. It must not be used for diagnosis, treatment, triage or clinical decision-making.
+
+### Implemented MCP tools
+
+The MCP Streamable HTTP server is available at `http://localhost:8001/mcp` and currently exposes:
 
 | Tool | Purpose | Access |
 |---|---|---|
-| `get_patient_summary` | Retrieve an authorised patient summary | Read |
-| `get_patient_timeline` | Retrieve longitudinal events | Read |
-| `get_observations` | Retrieve selected observations | Read |
-| `get_twin_snapshot` | Retrieve a twin snapshot | Read |
-| `create_scenario` | Create a hypothetical scenario | Controlled write |
-| `run_simulation` | Run an approved deterministic simulation | Controlled execution |
-| `compare_scenarios` | Compare scenario outputs | Read |
-| `get_evidence` | Retrieve source references | Read |
+| `get_patient_timeline` | Read an authorised patient's FHIR timeline | Patient read access |
+| `index_patient_evidence` | Index selected patient records into Qdrant | Patient write access |
+| `ask_patient_evidence` | Query retrieved evidence for an authorised patient | Patient read access |
 
-MCP is a protocol boundary, not an authorisation mechanism. Every tool must validate identity, patient scope, permission, input schema and audit requirements. Tool execution must not rely solely on instructions supplied to the LLM.
+The MCP server requires a caller bearer token and forwards it to the FastAPI service. The API remains the enforcement point for Keycloak role and patient-grant checks. MCP is not itself an identity provider or a substitute for API authorisation. The broader proposed tool catalogue is not implemented yet.
+
+### AI safety and traceability gaps
+
+The current system has a bounded prompt and patient-filtered retrieval, but does not yet provide prompt-injection resistance, model evaluation, independent clinical review workflow, model/prompt/tool version registry, full distributed trace correlation, automated hallucination evaluation, or a validated clinical decision-support safety case. Do not treat the assistant as clinical decision support.
 
 ## Security and privacy
 
@@ -652,7 +599,7 @@ A production healthcare deployment requires a formal threat model, penetration t
 
 ## Testing and quality
 
-The Pytest suite covers patient access isolation, role/grant permissions, registry search/create, scenario persistence and formulas, audit events, FHIR ingestion and patient-reference filtering, timeline, snapshot hashes and immutability. The live HAPI test publishes the six local synthetic observations and checks FHIR ingestion. GitHub Actions now runs the API/live-FHIR suite and a Next.js production build. The previously completed API-only run #14 passed 12 tests; the expanded workflow must pass on the current commit before treating the new end-to-end changes as verified. Run locally from `services/api` with `pip install -r requirements-dev.txt` followed by `pytest -q`; the live HAPI test is skipped unless `FHIR_INTEGRATION_TESTS=1` and `FHIR_BASE_URL` point to a running server. The broader planned quality strategy includes:
+The Pytest suite covers patient access isolation, role/grant permissions, registry search/create, scenario persistence, audit events, FHIR ingestion and patient-reference filtering, timeline, snapshot hashes/immutability, and the RAG API's role and patient-access boundaries. The live HAPI test exercises real FHIR publication/import against a containerised HAPI server. GitHub Actions runs API/live-FHIR tests, a Next.js production build and a full Docker Compose smoke deployment. Check the latest Actions run on the current commit; a successful API test or web build alone is not proof that every container or browser workflow works. Run locally from `services/api` with `pip install -r requirements-dev.txt` followed by `pytest -q`; the live HAPI test is skipped unless `FHIR_INTEGRATION_TESTS=1` and `FHIR_BASE_URL` point to a running server. The broader planned quality strategy includes:
 
 | Test type | Coverage |
 |---|---|
@@ -703,17 +650,18 @@ Clinical correctness cannot be established by software tests alone. Domain exper
 - [ ] Clinically validated physiological models and clinical governance
 
 ### Milestone 4 — Private AI and MCP
-- [ ] Local model runtime and licence-approved model artifact
-- [ ] Patient-scoped RAG and source citations
-- [ ] Evidence-grounded LLM responses and evaluation/guardrails
-- [ ] MCP server and governed tools
+- [x] Local Ollama model runtime with Qwen 2.5 3B and nomic-embed-text
+- [x] Patient-scoped RAG retrieval and source references
+- [x] Local evidence-grounded LLM responses with bounded prompt and synthetic-data disclaimer
+- [x] MCP Streamable HTTP server with three API-authorised tools
 - [ ] AI, prompt, model and tool-call audit/version management
 - [x] Local deterministic patient context summary (not an LLM)
 
 ### Milestone 5 — Hardening and demonstration
 - [ ] Dedicated OpenTelemetry / Prometheus / Grafana / centralised logging stack
-- [x] Automated API integration tests and live HAPI FHIR CI workflow
+- [x] Automated API integration tests, live HAPI FHIR CI and RAG access-boundary tests
 - [x] Next.js production build in CI
+- [x] Docker Compose configuration/build/start smoke workflow
 - [ ] Full browser E2E, security and recovery tests
 - [x] Synthetic seed patient and observations
 - [ ] Approved UI screenshots
@@ -738,7 +686,7 @@ Contribution guidelines and a code of conduct will be added as the project matur
 
 ## Licence
 
-The intended project licence is **Apache License 2.0**. A `LICENSE` file must be added to the repository before the licence is considered formally applied. Third-party dependencies, model weights and datasets retain their own licences and terms.
+This repository is distributed under the **Apache License 2.0**; see [LICENSE](LICENSE). Third-party dependencies, model weights and datasets retain their own licences and terms.
 
 ## Disclaimer
 
