@@ -1,0 +1,14 @@
+_format_version: "3.0"
+routes:
+  - id: twinfixeno-api
+    uri: /api/*
+    upstream:
+      type: roundrobin
+      nodes:
+        "api:8000": 1
+  - id: twinfixeno-health
+    uri: /health
+    upstream:
+      type: roundrobin
+      nodes:
+        "api:8000": 1
