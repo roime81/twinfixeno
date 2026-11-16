@@ -184,7 +184,9 @@ The table distinguishes components actually present in the current Compose stack
 | Web | Next.js 15, React 19, TypeScript | Patient workspace and runtime-configured API/OIDC |
 | API | FastAPI, Pydantic, SQLAlchemy | Patient, access, FHIR, snapshot, simulation, audit and RAG routes |
 | Identity | Keycloak 26.1.4, OIDC PKCE, JWT/JWKS validation | Development realm, roles and browser login |
-| Primary database | PostgreSQL 16 | Patient, grants, FHIR index, snapshots, simulations and audit metadata |
+| Application database | PostgreSQL 16 | Patient, access grants, imported FHIR index, snapshots, scenarios and audit metadata |
+| Identity database | PostgreSQL 16 | Persistent Keycloak realm, users and sessions |
+| FHIR database | PostgreSQL 16 | Persistent HAPI FHIR R4 clinical resources |
 | Healthcare interoperability | HAPI FHIR 7.4, FHIR R4 | Patient upsert, Observation publication and Observation/Condition/Encounter import |
 | API gateway | Apache APISIX 3.9.1 | Browser API routing to FastAPI |
 | Local inference | Ollama 0.6.8 | Local chat and embeddings |
@@ -194,12 +196,12 @@ The table distinguishes components actually present in the current Compose stack
 | Tool protocol | Python MCP SDK / FastMCP | Timeline, evidence indexing and evidence query tools |
 | Containers | Docker Compose | Local bundled development environment |
 | Observability | Prometheus API metrics, OpenTelemetry request/AI spans, Grafana dashboard and Jaeger trace viewer | Bundled for local operations; no central log aggregation/SIEM |
-| Clinical simulation | Not yet implemented | Current scenario engine is a bounded percentage-delta calculation, not physiology |
-| Database migrations | Not yet implemented | Runtime schema creation remains; Alembic and tested migration paths are required before production |
+| Scenario engine | Deterministic percentage-delta module | Implemented as an illustrative arithmetic scenario only; no physiology or clinical prediction |
+| Database migrations | Alembic initial baseline | Applies before API startup; CI checks upgrade/downgrade/upgrade. Further explicit schema revisions and production upgrade rehearsal remain required |
 
 ### Open-source and licence policy
 
-The project intends to use open-source software only. Before adding a dependency or model artifact:
+The project is released under Apache License 2.0. Before adding a dependency or model artifact:
 
 1. Record its exact version and source.
 2. Verify the licence of the actual package or model artifact.
@@ -207,7 +209,7 @@ The project intends to use open-source software only. Before adding a dependency
 4. Record dependencies in a Software Bill of Materials (SBOM).
 5. Avoid dependencies that require a proprietary hosted API for core functionality.
 
-The intended project licence is Apache License 2.0. This does not automatically change the licences of third-party dependencies or model weights.
+This does not automatically change the licences of third-party dependencies or model weights. Check and record the exact licences for the Qwen and embedding model artifacts in the environment where they are pulled.
 
 ## Repository structure
 
@@ -324,29 +326,29 @@ The API container runs the initial Alembic baseline before starting and then see
 
 ## Configuration
 
-The committed `.env.example` documents the current local configuration. Replace all defaults before any shared or production deployment.
+The local Compose stack reads configuration from `.env`. Start from the committed local example:
 
-| Variable | Purpose | Example for local development |
+```powershell
+Copy-Item .env.example .env
+```
+
+The example file uses local-only passwords and turns on synthetic demo data plus username grant compatibility so the seeded demo users can sign in. Never reuse these defaults outside the isolated local environment.
+
+| Variable | Purpose | Local default |
 |---|---|---|
-| `APP_ENV` | Runtime environment | `development` |
-| `APP_SECRET_KEY` | Application signing secret | Generate a random secret |
-| `DATABASE_URL` | PostgreSQL connection | `postgresql+psycopg://twinfixeno:change-me@postgres:5432/twinfixeno` |
-| `FHIR_BASE_URL` | HAPI FHIR endpoint | `http://fhir:8080/fhir` |
-| `KEYCLOAK_ISSUER` | Token issuer | `http://localhost:8081/realms/twinfixeno` |
-| `KEYCLOAK_JWKS_URL` | Internal signing-key endpoint | `http://keycloak:8080/realms/twinfixeno/protocol/openid-connect/certs` |
-| `JWT_AUDIENCE` | API token audience | `twinfixeno-api` |
-| `AUTH_REQUIRED` | Require bearer token | `true` |
-| `KEYCLOAK_ADMIN_PASSWORD` | Local bootstrap admin password | Change before use |
-| `QDRANT_URL` | Qdrant endpoint | `http://qdrant:6333` |
-| `OBJECT_STORAGE_ENDPOINT` | Object storage endpoint | `http://seaweedfs:8333` |
-| `OIDC_ISSUER_URL` | Keycloak issuer | Local Keycloak realm URL |
-| `OIDC_CLIENT_ID` | OIDC client | `twinfixeno-web` |
-| `LLM_PROVIDER` | Local inference provider | `ollama` |
-| `LLM_BASE_URL` | Inference endpoint | `http://ollama:11434` |
-| `LLM_MODEL` | Model identifier | A locally pulled, licence-verified model |
-| `OTEL_EXPORTER_OTLP_ENDPOINT` | Telemetry collector | Local OTLP endpoint |
+| `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD` | Application database | `twinfixeno` / `twinfixeno` / local-only password |
+| `KEYCLOAK_ADMIN_PASSWORD`, `KEYCLOAK_DB_PASSWORD` | Keycloak administrator and database | Local-only passwords |
+| `FHIR_DB_USER`, `FHIR_DB_PASSWORD` | Persistent HAPI FHIR database | `hapi` / local-only password |
+| `KEYCLOAK_ISSUER`, `KEYCLOAK_JWKS_URL`, `JWT_AUDIENCE` | API access-token validation | Local Keycloak realm / `twinfixeno-api` |
+| `AUTH_REQUIRED` | Require bearer token on application APIs | `true` |
+| `ALLOW_USERNAME_PATIENT_GRANTS` | Enable username fallback for local demo grants | `true` in `.env.example`; use `false` outside the demo |
+| `SEED_DEMO_DATA` | Create the fictional patient and demo grants | `true`; set to `false` outside the demo |
+| `WEB_API_BASE_URL`, `WEB_KEYCLOAK_URL` | Browser-visible API gateway and identity URLs | `http://localhost:9080`, `http://localhost:8081` |
+| `OLLAMA_CHAT_MODEL`, `OLLAMA_EMBED_MODEL` | Local chat and embedding model tags | `qwen2.5:3b`, `nomic-embed-text` |
+| `GRAFANA_ADMIN_USER`, `GRAFANA_ADMIN_PASSWORD` | Local Grafana access | `admin` / local-only password |
+| `WEB_PORT`, `API_PORT`, `APISIX_PORT`, `KEYCLOAK_PORT`, `FHIR_PORT`, `MCP_PORT`, `OLLAMA_PORT`, `QDRANT_PORT`, `PROMETHEUS_PORT`, `GRAFANA_PORT`, `JAEGER_PORT` | Loopback host port overrides | See `.env.example` |
 
-Do not expose PostgreSQL, Qdrant, object storage, model inference or internal service ports to an untrusted network.
+All local host ports bind to loopback. Do not expose internal services to an untrusted network. For a shared or production environment, replace the development Keycloak realm, disable demo seeding and username grants, rotate credentials, add TLS and deploy managed secrets.
 
 ## Running the platform
 
