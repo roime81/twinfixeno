@@ -106,6 +106,8 @@ jobs:
               "APISIX gateway": "http://127.0.0.1:9080/health",
               "Keycloak OIDC": "http://127.0.0.1:8081/realms/twinfixeno/.well-known/openid-configuration",
               "HAPI FHIR R4": "http://127.0.0.1:8090/fhir/metadata",
+              "Ollama local model runtime": "http://127.0.0.1:11434/api/tags",
+              "Qdrant vector store": "http://127.0.0.1:6333/collections",
           }
           pending = dict(checks)
           deadline = time.time() + 180
@@ -133,6 +135,32 @@ jobs:
                   raise SystemExit(f"Protected API returned unexpected HTTP {response.code}")
           else:
               raise SystemExit("Protected API accepted a request without a bearer token")
+
+          import json
+          initialize = {
+              "jsonrpc": "2.0",
+              "id": 1,
+              "method": "initialize",
+              "params": {
+                  "protocolVersion": "2025-03-26",
+                  "capabilities": {},
+                  "clientInfo": {"name": "twinfixeno-compose-smoke", "version": "1.0.0"},
+              },
+          }
+          mcp_request = urllib.request.Request(
+              "http://127.0.0.1:8001/mcp",
+              data=json.dumps(initialize).encode("utf-8"),
+              headers={
+                  "Content-Type": "application/json",
+                  "Accept": "application/json, text/event-stream",
+              },
+              method="POST",
+          )
+          with urllib.request.urlopen(mcp_request, timeout=15) as response:
+              payload = response.read().decode("utf-8")
+              if response.status != 200 or '"serverInfo"' not in payload:
+                  raise SystemExit("MCP initialize handshake failed: " + payload[:500])
+              print("PASS MCP Streamable HTTP initialize handshake")
           PY
       - name: Collect container diagnostics on failure
         if: failure()
