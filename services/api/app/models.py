@@ -1,5 +1,5 @@
 from datetime import date, datetime, timezone
-from sqlalchemy import Date, DateTime, Float, ForeignKey, Integer, String, Text
+from sqlalchemy import Date, DateTime, Float, ForeignKey, Integer, String, Text, JSON, UniqueConstraint, event
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from .database import Base
 
@@ -27,8 +27,49 @@ class Observation(Base):
 
 class TwinSnapshot(Base):
     __tablename__ = "twin_snapshots"
+    __table_args__ = (UniqueConstraint("patient_id", "version", name="uq_snapshot_patient_version"),)
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     patient_id: Mapped[int] = mapped_column(ForeignKey("patients.id", ondelete="CASCADE"), index=True)
     version: Mapped[int] = mapped_column(Integer)
     summary: Mapped[str] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+class PatientAccessGrant(Base):
+    __tablename__ = "patient_access_grants"
+    __table_args__ = (UniqueConstraint("patient_id", "user_subject", "username", name="uq_patient_access_principal"),)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    patient_id: Mapped[int] = mapped_column(ForeignKey("patients.id", ondelete="CASCADE"), index=True)
+    user_subject: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    username: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    access_level: Mapped[str] = mapped_column(String(16), default="read")
+
+class FhirClinicalResource(Base):
+    __tablename__ = "fhir_clinical_resources"
+    __table_args__ = (UniqueConstraint("resource_type", "fhir_id", name="uq_fhir_resource_type_id"),)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    patient_id: Mapped[int] = mapped_column(ForeignKey("patients.id", ondelete="CASCADE"), index=True)
+    resource_type: Mapped[str] = mapped_column(String(32), index=True)
+    fhir_id: Mapped[str] = mapped_column(String(128))
+    version_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    last_updated: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    effective_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+    status: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    source_system: Mapped[str] = mapped_column(String(128), default="hapi-fhir")
+    content_sha256: Mapped[str] = mapped_column(String(64))
+    resource_json: Mapped[dict] = mapped_column(JSON)
+
+class TwinSnapshotArtifact(Base):
+    __tablename__ = "twin_snapshot_artifacts"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    snapshot_id: Mapped[int] = mapped_column(ForeignKey("twin_snapshots.id", ondelete="RESTRICT"), unique=True, index=True)
+    payload: Mapped[dict] = mapped_column(JSON)
+    provenance: Mapped[dict] = mapped_column(JSON)
+    content_sha256: Mapped[str] = mapped_column(String(64), index=True)
+    created_by: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+def _immutable_artifact(mapper, connection, target):
+    raise ValueError("Twin snapshot artifacts are immutable; create a new snapshot instead")
+
+event.listen(TwinSnapshotArtifact, "before_update", _immutable_artifact)
+event.listen(TwinSnapshotArtifact, "before_delete", _immutable_artifact)
