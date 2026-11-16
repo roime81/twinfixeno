@@ -7,40 +7,18 @@ from sqlalchemy import select, or_, text, func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from .database import Base, engine, get_db
+from .database import get_db
 from .models import (
     Patient, Observation, TwinSnapshot, TwinSnapshotArtifact,
     FhirClinicalResource, PatientAccessGrant, SimulationRun, AuditEvent,
 )
 from .schemas import PatientOut, ObservationOut
-from .seed import seed
 from .auth import get_current_user
 from .access import get_accessible_patient, require_role, READ_ROLES, WRITE_ROLES
 from .snapshots import create_immutable_snapshot, sha256_json
 from .timeline import timeline_item
 from .audit import write_audit
 from . import fhir, rag
-
-Base.metadata.create_all(bind=engine)
-if engine.dialect.name == "postgresql":
-    with engine.begin() as connection:
-        connection.execute(text("""
-        CREATE OR REPLACE FUNCTION twinfixeno_reject_snapshot_mutation() RETURNS trigger AS $$
-        BEGIN RAISE EXCEPTION 'Twin snapshots are append-only; create a new version'; END;
-        $$ LANGUAGE plpgsql;
-        """))
-        connection.execute(text("""
-        CREATE OR REPLACE FUNCTION twinfixeno_reject_audit_mutation() RETURNS trigger AS $$
-        BEGIN RAISE EXCEPTION 'Audit events are append-only'; END;
-        $$ LANGUAGE plpgsql;
-        """))
-        for table in ("twin_snapshots", "twin_snapshot_artifacts"):
-            trigger = f"trg_{table}_immutable"
-            connection.execute(text(f"DROP TRIGGER IF EXISTS {trigger} ON {table}"))
-            connection.execute(text(f"CREATE TRIGGER {trigger} BEFORE UPDATE OR DELETE ON {table} FOR EACH ROW EXECUTE FUNCTION twinfixeno_reject_snapshot_mutation()"))
-        connection.execute(text("DROP TRIGGER IF EXISTS trg_audit_events_immutable ON audit_events"))
-        connection.execute(text("CREATE TRIGGER trg_audit_events_immutable BEFORE UPDATE OR DELETE ON audit_events FOR EACH ROW EXECUTE FUNCTION twinfixeno_reject_audit_mutation()"))
-seed()
 
 app = FastAPI(
     title="twinfixeno API",
