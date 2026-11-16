@@ -103,6 +103,7 @@ jobs:
           checks = {
               "web": "http://127.0.0.1:3000/",
               "API readiness": "http://127.0.0.1:8000/health/ready",
+              "API Prometheus metrics": "http://127.0.0.1:8000/metrics",
               "APISIX gateway": "http://127.0.0.1:9080/health",
               "Keycloak OIDC": "http://127.0.0.1:8081/realms/twinfixeno/.well-known/openid-configuration",
               "HAPI FHIR R4": "http://127.0.0.1:8090/fhir/metadata",
