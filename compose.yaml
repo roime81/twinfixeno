@@ -92,8 +92,8 @@ services:
     restart: "no"
     command: ["--fail", "--silent", "--show-error", "--retry", "90", "--retry-connrefused", "--retry-delay", "2", "--retry-max-time", "240", "http://qdrant:6333/collections"]
     depends_on:
-      qdrant-ready:
-        condition: service_completed_successfully
+      qdrant:
+        condition: service_started
     networks: [internal]
 
   ollama:
@@ -160,8 +160,8 @@ services:
         condition: service_completed_successfully
       ollama-models:
         condition: service_completed_successfully
-      qdrant:
-        condition: service_started
+      qdrant-ready:
+        condition: service_completed_successfully
     ports:
       - "127.0.0.1:${API_PORT:-8000}:8000"
     healthcheck:
