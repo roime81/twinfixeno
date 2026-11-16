@@ -55,7 +55,7 @@ docker compose restart api
 docker compose down
 \`\`\`
 
-The application and Keycloak identity stores run in separate PostgreSQL services, each backed by its own named volume. Both preserve data across ordinary container recreation. Do not use docker compose down -v unless you intend to delete the local application database, identity store and snapshot history.
+The application, Keycloak identity and HAPI FHIR data stores run in separate PostgreSQL services, each backed by its own named volume. All three preserve data across ordinary container recreation. Do not use docker compose down -v unless you intend to delete the application database, identity store, FHIR resources, AI vectors, model cache and snapshot history.
 
 ## Monitoring and tracing
 
