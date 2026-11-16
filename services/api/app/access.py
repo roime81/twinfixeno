@@ -31,10 +31,12 @@ def get_accessible_patient(db: Session, patient_id: int, user: dict, write: bool
         principal_filters.append(PatientAccessGrant.username == user["preferred_username"])
     if not principal_filters:
         raise HTTPException(status_code=404, detail="Patient not found")
-    grant = db.scalar(select(PatientAccessGrant.id).where(
+    grant = db.scalar(select(PatientAccessGrant).where(
         PatientAccessGrant.patient_id == patient_id,
         or_(*principal_filters)
     ))
     if grant is None:
         raise HTTPException(status_code=404, detail="Patient not found")
+    if write and grant.access_level != "write":
+        raise HTTPException(status_code=403, detail="This patient grant is read-only")
     return patient
