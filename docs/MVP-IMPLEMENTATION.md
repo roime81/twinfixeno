@@ -6,7 +6,7 @@ The repository now runs as one Docker Compose application stack:
 
 - Next.js 15 / React 19 web application.
 - FastAPI application API.
-- PostgreSQL 16 application database.
+- PostgreSQL 16 application database and a separate PostgreSQL identity database for Keycloak.
 - Keycloak 26 OIDC identity service with browser PKCE.
 - HAPI FHIR R4 server.
 - Apache APISIX API gateway.
@@ -30,7 +30,7 @@ The supported local URLs are:
 | Keycloak | http://localhost:8081 |
 | HAPI FHIR metadata | http://localhost:8090/fhir/metadata |
 
-Compose includes restart policies, persistent PostgreSQL and Keycloak volumes, database health checks, and one-shot curl readiness gates for Keycloak and HAPI FHIR before the API starts. The web workspace waits for the API health check. All host ports bind to `127.0.0.1` for local-only access. The API has `/health` and database-backed `/health/ready` endpoints. Browser-visible API and Keycloak URLs are loaded at runtime from `/runtime-config`, not embedded at image build time.
+Compose includes restart policies, separate persistent PostgreSQL databases for the application and Keycloak, database health checks, and one-shot curl readiness gates for Keycloak and HAPI FHIR before the API starts. The web workspace waits for the API health check. All host ports bind to `127.0.0.1` for local-only access. The API has `/health` and database-backed `/health/ready` endpoints. Browser-visible API and Keycloak URLs are loaded at runtime from `/runtime-config`, not embedded at image build time.
 
 ## Implemented application capabilities
 

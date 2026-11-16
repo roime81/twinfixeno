@@ -47,7 +47,7 @@ docker compose restart api
 docker compose down
 \`\`\`
 
-The named PostgreSQL and Keycloak volumes preserve their data across ordinary container recreation. Do not use docker compose down -v unless you intend to delete the local application database, identity store and snapshot history.
+The application and Keycloak identity stores run in separate PostgreSQL services, each backed by its own named volume. Both preserve data across ordinary container recreation. Do not use docker compose down -v unless you intend to delete the local application database, identity store and snapshot history.
 
 ## What the integrated release contains
 
