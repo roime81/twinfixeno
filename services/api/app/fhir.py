@@ -60,11 +60,11 @@ def _patient_reference(resource: dict) -> str | None:
 def _effective_date(resource: dict, resource_type: str):
     raw = None
     if resource_type == "Observation":
-        raw = resource.get("effectiveDateTime") or resource.get("effectivePeriod", {}).get("start") or resource.get("issued")
+        raw = resource.get("effectiveDateTime") or (resource.get("effectivePeriod") or {}).get("start") or resource.get("issued")
     elif resource_type == "Condition":
-        raw = resource.get("onsetDateTime") or resource.get("recordedDate") or resource.get("onsetPeriod", {}).get("start")
+        raw = resource.get("onsetDateTime") or resource.get("recordedDate") or (resource.get("onsetPeriod") or {}).get("start")
     elif resource_type == "Encounter":
-        raw = resource.get("period", {}).get("start")
+        raw = (resource.get("period") or {}).get("start")
     if not raw:
         return None
     try:
