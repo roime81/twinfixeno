@@ -164,6 +164,53 @@ jobs:
               if response.status != 200 or '"serverInfo"' not in payload:
                   raise SystemExit("MCP initialize handshake failed: " + payload[:500])
               print("PASS MCP Streamable HTTP initialize handshake")
+
+          tools_list = {
+              "jsonrpc": "2.0",
+              "id": 2,
+              "method": "tools/list",
+              "params": {},
+          }
+          list_request = urllib.request.Request(
+              "http://127.0.0.1:8001/mcp",
+              data=json.dumps(tools_list).encode("utf-8"),
+              headers={
+                  "Content-Type": "application/json",
+                  "Accept": "application/json, text/event-stream",
+              },
+              method="POST",
+          )
+          with urllib.request.urlopen(list_request, timeout=15) as response:
+              tool_payload = response.read().decode("utf-8")
+              expected_tools = ["get_patient_timeline", "index_patient_evidence", "ask_patient_evidence"]
+              missing_tools = [tool for tool in expected_tools if tool not in tool_payload]
+              if response.status != 200 or missing_tools:
+                  raise SystemExit("MCP tools/list failed; missing: " + ", ".join(missing_tools))
+              print("PASS MCP tools/list exposes all three expected tools")
+
+          unauthenticated_call = {
+              "jsonrpc": "2.0",
+              "id": 3,
+              "method": "tools/call",
+              "params": {
+                  "name": "get_patient_timeline",
+                  "arguments": {"patient_id": 1},
+              },
+          }
+          call_request = urllib.request.Request(
+              "http://127.0.0.1:8001/mcp",
+              data=json.dumps(unauthenticated_call).encode("utf-8"),
+              headers={
+                  "Content-Type": "application/json",
+                  "Accept": "application/json, text/event-stream",
+              },
+              method="POST",
+          )
+          with urllib.request.urlopen(call_request, timeout=15) as response:
+              call_payload = response.read().decode("utf-8")
+              if "Authenticated Keycloak bearer token required" not in call_payload:
+                  raise SystemExit("MCP accepted or did not explicitly reject an unauthenticated tool call")
+              print("PASS MCP tool call rejects missing bearer token")
           PY
       - name: Set up Node.js for browser E2E
         uses: actions/setup-node@v4
