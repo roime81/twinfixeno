@@ -315,7 +315,7 @@ Keycloak requires a password change on first sign-in. These credentials are for 
 
 ### 5. Database and demo data
 
-The API currently creates its SQLAlchemy schema on startup and seeds a fictional patient, six synthetic observations, and grants for the demo clinician and researcher. This is convenient for local evaluation but is not a production migration strategy. Keycloak imports the development realm; HAPI FHIR runs as a separate container.
+The API container runs the initial Alembic baseline before starting and then seeds a fictional patient, six synthetic observations, and grants for the demo clinician/researcher when `SEED_DEMO_DATA=true` (the local default). Set `SEED_DEMO_DATA=false` in a non-demo environment. Future schema changes must use explicit reviewed Alembic revisions; the baseline migration is not a substitute for a rehearsed production upgrade plan. Keycloak imports the development realm; HAPI FHIR runs as a separate container.
 
 ## Configuration
 
