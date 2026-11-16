@@ -102,7 +102,9 @@ async def trace_http_requests(request: Request, call_next):
                 span.set_status(Status(StatusCode.ERROR))
             return response
         except Exception as exc:
-            span.record_exception(exc)
+            # Do not export exception messages: downstream HTTP/FHIR/AI exceptions
+            # can contain request fragments. Keep only the error class.
+            span.set_attribute("error.type", type(exc).__name__)
             span.set_status(Status(StatusCode.ERROR))
             raise
 
@@ -465,7 +467,7 @@ def sync_patient_to_fhir(patient_id: int, request: Request, db: Session = Depend
         }
     except Exception as exc:
         FHIR_SYNC_COUNTER.labels(outcome="error").inc()
-        logger.exception("FHIR synchronisation failed")
+        logger.error("FHIR synchronisation failed", extra={"error_type": type(exc).__name__})
         db.rollback()
         raise HTTPException(status_code=502, detail="FHIR synchronisation failed; inspect API logs for diagnostic details.") from exc
 
@@ -501,7 +503,7 @@ def rag_index(patient_id: int, request: Request, db: Session = Depends(get_db), 
         return result
     except Exception as exc:
         RAG_INDEX_COUNTER.labels(outcome="error").inc()
-        logger.exception("Local evidence indexing failed")
+        logger.error("Local evidence indexing failed", extra={"error_type": type(exc).__name__})
         raise HTTPException(status_code=503, detail="Local evidence indexing service is unavailable; inspect API logs.") from exc
 
 @app.post('/api/v1/patients/{patient_id}/rag/query')
@@ -543,5 +545,5 @@ def rag_query(patient_id: int, question: RagQuestion, request: Request, db: Sess
         return result
     except Exception as exc:
         RAG_QUERY_COUNTER.labels(outcome="error").inc()
-        logger.exception("Local evidence query failed")
+        logger.error("Local evidence query failed", extra={"error_type": type(exc).__name__})
         raise HTTPException(status_code=503, detail="Local evidence query service is unavailable; inspect API logs.") from exc
