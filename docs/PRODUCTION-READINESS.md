@@ -36,7 +36,7 @@ The integrated Compose stack is a runnable synthetic-data development/review env
 
 ### Persistence and recovery
 - The repository now has an initial Alembic baseline that creates/adopts the current schema and installs PostgreSQL immutability triggers. CI exercises upgrade → downgrade → upgrade on SQLite. Before production, replace the metadata-based baseline with reviewed explicit revisions for every future schema change, rehearse production PostgreSQL upgrade/rollback (or forward-fix) procedures, and run migrations as a controlled deployment job.
-- Configure supported production PostgreSQL and HAPI FHIR databases, encryption at rest, backup schedules, restore tests, retention, high availability and disaster recovery objectives. The current Compose HAPI FHIR container is not configured with a supported external persistent database and must be replaced or explicitly configured before production.
+- The local Compose environment now gives HAPI FHIR its own PostgreSQL 16 database and persistent volume. Production still requires an approved managed database topology, TLS, encryption at rest, backup/restore tests, retention, high availability and disaster recovery objectives.
 - Add independent tamper-evident audit storage and access reviews. The current audit table and snapshot SHA-256 checksum are not a signed, independently immutable evidence system.
 - Define operational ownership, SLOs, incident response, patching, vulnerability management and dependency/SBOM processes. A local Prometheus/Grafana/Jaeger stack is bundled, but production retention, alert routing, centralised logs, SIEM forwarding and secured monitoring access require deployment-specific configuration.
 
