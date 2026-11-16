@@ -71,7 +71,7 @@ $env:DATABASE_URL = "sqlite:///./test.db"
 $env:AUTH_REQUIRED = "false"
 pytest -q
 ```
-GitHub Actions runs the same API test suite on pushes to main and pull requests.
+GitHub Actions runs the API suite on pushes to main and pull requests. The workflow starts a real HAPI FHIR R4 container and runs an opt-in live-server ingestion test in addition to the mocked API tests. The live test verifies Patient creation, and actual Observation, Condition and Encounter search/import.
 
 ## Limitations and production hardening
 - This remains a synthetic-data MVP, not a clinical system or medical device.
@@ -81,6 +81,6 @@ GitHub Actions runs the same API test suite on pushes to main and pull requests.
 - FHIR resources are queried by patient reference; production deployment should use a secured FHIR endpoint, TLS, service identity, terminology validation and robust retry/backoff.
 - Snapshot SHA-256 is an integrity checksum. Add signing, key custody and independent audit storage for tamper-evident regulated workflows.
 - HAPI FHIR persistence, backup/restore, migrations, retention and high availability require production configuration.
-- The GitHub Actions workflow is committed, but its first hosted run must complete before claiming a green CI result.
+- The hosted CI suite has passed the 11-test API suite. A separate live-HAPI workflow run is being validated after adding the container-backed test.
 
 The demo patient is fictional. Never use real patient data in this repository or its development environment.
