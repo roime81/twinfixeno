@@ -293,6 +293,15 @@ jobs:
           CI: "true"
           PW_BASE_URL: http://localhost:3000
         run: npm run test:e2e
+      - name: Upload browser test failure evidence
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: twinfixeno-playwright-failure
+          path: |
+            apps/web/test-results/
+            apps/web/playwright-report/
+          if-no-files-found: ignore
       - name: Collect container diagnostics on failure
         if: failure()
         run: |
