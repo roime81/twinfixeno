@@ -287,6 +287,12 @@ jobs:
         run: |
           npm install --no-audit --no-fund
           npx playwright install --with-deps chromium
+      - name: Set deterministic passwords for isolated browser users
+        run: |
+          docker compose exec -T keycloak /opt/keycloak/bin/kcadm.sh config credentials --server http://localhost:8080 --realm master --user admin --password change-me-before-use
+          docker compose exec -T keycloak /opt/keycloak/bin/kcadm.sh set-password --realm twinfixeno --username demo.clinician --new-password "E2E-Clinician-Only-2026!"
+          docker compose exec -T keycloak /opt/keycloak/bin/kcadm.sh set-password --realm twinfixeno --username demo.admin --new-password "E2E-Admin-Only-2026!"
+          docker compose exec -T keycloak /opt/keycloak/bin/kcadm.sh set-password --realm twinfixeno --username demo.researcher --new-password "E2E-Researcher-Only-2026!"
       - name: Run browser E2E workflows
         working-directory: apps/web
         env:
