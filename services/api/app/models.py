@@ -71,5 +71,7 @@ class TwinSnapshotArtifact(Base):
 def _immutable_artifact(mapper, connection, target):
     raise ValueError("Twin snapshot artifacts are immutable; create a new snapshot instead")
 
+event.listen(TwinSnapshot, "before_update", _immutable_artifact)
+event.listen(TwinSnapshot, "before_delete", _immutable_artifact)
 event.listen(TwinSnapshotArtifact, "before_update", _immutable_artifact)
 event.listen(TwinSnapshotArtifact, "before_delete", _immutable_artifact)
