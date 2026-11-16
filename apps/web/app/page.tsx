@@ -36,7 +36,8 @@ function displayPatient(patient?: Patient | null) {
 
 export default function Home() {
   const keycloak = useRef<Keycloak | null>(null);
-  const runtime = useRef({ apiBaseUrl: "http://localhost:8000", keycloakUrl: "http://localhost:8081", keycloakRealm: "twinfixeno", keycloakClientId: "twinfixeno-web" });
+  const patientLoadSequence = useRef(0);
+  const runtime = useRef({ apiBaseUrl: "http://localhost:9080", keycloakUrl: "http://localhost:8081", keycloakRealm: "twinfixeno", keycloakClientId: "twinfixeno-web" });
   const [authenticated, setAuthenticated] = useState(false);
   const [username, setUsername] = useState("");
   const [roles, setRoles] = useState<string[]>([]);
@@ -91,6 +92,7 @@ export default function Home() {
   }
 
   async function loadPatient(patientId: number) {
+    const sequence = ++patientLoadSequence.current;
     setLoading(true);
     setError("");
     // Clear patient-scoped state before switching context. Never leave the prior
@@ -116,6 +118,8 @@ export default function Home() {
         api<Simulation[]>("/api/v1/patients/" + patientId + "/simulations"),
         api<Permissions>("/api/v1/patients/" + patientId + "/permissions"),
       ]);
+      // Ignore late responses from an earlier selection.
+      if (sequence !== patientLoadSequence.current) return;
       setPatients(current => current.map(item => item.id === patientData.id ? patientData : item));
       setObservations(obs);
       setTimeline(events.items || []);
@@ -126,9 +130,11 @@ export default function Home() {
       setContextReport(null);
       setSelectedSnapshot(null);
     } catch (err: any) {
-      setError(err?.message || "Unable to load the selected patient.");
+      if (sequence === patientLoadSequence.current) {
+        setError(err?.message || "Unable to load the selected patient.");
+      }
     } finally {
-      setLoading(false);
+      if (sequence === patientLoadSequence.current) setLoading(false);
     }
   }
 
@@ -154,7 +160,7 @@ export default function Home() {
         const config = await response.json();
         if (!alive) return;
         runtime.current = {
-          apiBaseUrl: config.apiBaseUrl || "http://localhost:8000",
+          apiBaseUrl: config.apiBaseUrl || "http://localhost:9080",
           keycloakUrl: config.keycloakUrl || "http://localhost:8081",
           keycloakRealm: config.keycloakRealm || "twinfixeno",
           keycloakClientId: config.keycloakClientId || "twinfixeno-web",
