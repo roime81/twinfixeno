@@ -130,7 +130,7 @@ Run API tests locally:
 
 ```powershell
 cd services/api
-python -m pip install -r requirements.txt
+python -m pip install -r requirements-dev.txt
 $env:DATABASE_URL = "sqlite:///./test.db"
 $env:AUTH_REQUIRED = "false"
 pytest -q
