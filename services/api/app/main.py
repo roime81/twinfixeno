@@ -404,12 +404,20 @@ def create_access_grant(patient_id: int, grant: AccessGrantIn, request: Request,
         raise HTTPException(status_code=400, detail="Username-only grants are disabled; provide the immutable Keycloak subject ID")
     if db.get(Patient, patient_id) is None:
         raise HTTPException(status_code=404, detail="Patient not found")
-    filters = []
-    if grant.username:
-        filters.append(PatientAccessGrant.username == grant.username)
+    # A supplied immutable subject is the principal key; username is
+    # retained only as display metadata. Use username as the lookup key only
+    # for the explicit local-demo compatibility mode.
     if grant.user_subject:
-        filters.append(PatientAccessGrant.user_subject == grant.user_subject)
-    existing = db.scalar(select(PatientAccessGrant).where(PatientAccessGrant.patient_id == patient_id, or_(*filters)))
+        existing = db.scalar(select(PatientAccessGrant).where(
+            PatientAccessGrant.patient_id == patient_id,
+            PatientAccessGrant.user_subject == grant.user_subject,
+        ))
+    else:
+        existing = db.scalar(select(PatientAccessGrant).where(
+            PatientAccessGrant.patient_id == patient_id,
+            PatientAccessGrant.username == grant.username,
+            PatientAccessGrant.user_subject.is_(None),
+        ))
     if existing:
         existing.username = grant.username or existing.username
         existing.user_subject = grant.user_subject or existing.user_subject
