@@ -1,3 +1,4 @@
+import os
 from fastapi import HTTPException
 from sqlalchemy import select, or_
 from sqlalchemy.orm import Session
@@ -27,7 +28,9 @@ def get_accessible_patient(db: Session, patient_id: int, user: dict, write: bool
     principal_filters = []
     if user.get("sub"):
         principal_filters.append(PatientAccessGrant.user_subject == user["sub"])
-    if user.get("preferred_username"):
+    # Username matching is a local-demo compatibility switch only. In a
+    # shared/production environment, bind grants to Keycloak's immutable sub.
+    if os.getenv("ALLOW_USERNAME_PATIENT_GRANTS", "false").lower() in {"1", "true", "yes"} and user.get("preferred_username"):
         principal_filters.append(PatientAccessGrant.username == user["preferred_username"])
     if not principal_filters:
         raise HTTPException(status_code=404, detail="Patient not found")
