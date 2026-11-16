@@ -18,11 +18,20 @@ async function signInAsDemoUser(
   // Update the password during the first browser login; Compose CI starts
   // with an empty identity volume, so this is repeatable for every run.
   const passwordUpdate = page.locator('input[name="password-new"]');
-  await expect(passwordUpdate).toBeVisible({ timeout: 30_000 });
-  await passwordUpdate.fill(replacementPassword);
-  await page.locator('input[name="password-confirm"]').fill(replacementPassword);
-  await page.locator('button[type="submit"], input[type="submit"]').last().click();
+  const requiresPasswordChange = await passwordUpdate.isVisible({ timeout: 5_000 }).catch(() => false);
+  if (requiresPasswordChange) {
+    await passwordUpdate.fill(replacementPassword);
+    await page.locator('input[name="password-confirm"]').fill(replacementPassword);
+    await page.locator('button[type="submit"], input[type="submit"]').last().click();
+  }
 
+  // A failed login should fail with the actual Keycloak validation message,
+  // rather than a misleading timeout waiting for a password-change form.
+  const loginError = page.locator("#input-error, .alert-error, [role='alert']").first();
+  if (await loginError.isVisible({ timeout: 1_000 }).catch(() => false)) {
+    throw new Error("Keycloak sign-in failed: " + (await loginError.innerText()));
+  }
+  await expect(page).toHaveURL(/localhost:3000/, { timeout: 90_000 });
   await expect(page.getByRole("heading", { name: "Command centre" })).toBeVisible({
     timeout: 90_000,
   });
