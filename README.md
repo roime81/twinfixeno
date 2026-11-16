@@ -415,7 +415,6 @@ These are the development endpoints defined by the current `compose.yaml`. Keycl
 | APISIX gateway | http://localhost:9080 |
 | HAPI FHIR | http://localhost:8090/fhir/metadata |
 | Keycloak | http://localhost:8081 |
-| Keycloak | http://localhost:8081 |
 | Qdrant dashboard/API | http://localhost:6333/dashboard |
 | Grafana | http://localhost:3001 |
 | Prometheus | http://localhost:9090 |
