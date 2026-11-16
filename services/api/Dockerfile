@@ -17,4 +17,4 @@ COPY --chown=app:app app ./app
 USER app
 
 EXPOSE 8000
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers"]
+CMD ["/bin/sh", "-c", "alembic upgrade head && if [ \"${SEED_DEMO_DATA:-false}\" = \"true\" ]; then python -m app.seed; fi && exec uvicorn app.main:app --host 0.0.0.0 --port 8000 --proxy-headers"]
