@@ -1,4 +1,5 @@
 from fastapi import Depends, FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from sqlalchemy import select, or_, text
 from sqlalchemy.orm import Session
@@ -26,6 +27,13 @@ if engine.dialect.name == "postgresql":
             connection.execute(text(f"CREATE TRIGGER {trigger} BEFORE UPDATE OR DELETE ON {table} FOR EACH ROW EXECUTE FUNCTION twinfixeno_reject_snapshot_mutation()"))
 seed()
 app = FastAPI(title="twinfixeno API", version="0.3.0", description="Synthetic-data healthcare Digital Twin MVP")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000"],
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type"],
+)
 
 class AccessGrantIn(BaseModel):
     username: str | None = Field(default=None, min_length=1, max_length=255)
