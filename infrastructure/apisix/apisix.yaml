@@ -12,3 +12,4 @@ routes:
       type: roundrobin
       nodes:
         "api:8000": 1
+#END
