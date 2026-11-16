@@ -2,7 +2,7 @@
 
 **An open-source, privacy-first healthcare Digital Twin platform.**
 
-twinfixeno is an early-stage, design-driven MVP for creating a longitudinal digital representation of a patient's health journey. It brings together interoperable clinical data, versioned patient-state snapshots, explainable analytics, hypothetical scenario exploration, private local language models and governed Model Context Protocol (MCP) tools.
+TWINFixeno is an early-stage, design-driven MVP for creating a longitudinal digital representation of a patient's health journey. It brings together interoperable clinical data, versioned patient-state snapshots, explainable analytics, hypothetical scenario exploration, private local language models and governed Model Context Protocol (MCP) tools.
 
 > **Project status:** Early MVP implementation. The repository includes a runnable Next.js + FastAPI + PostgreSQL + APISIX foundation. Authentication, FHIR integration, simulation, AI/MCP and full observability remain planned.
 
