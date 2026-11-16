@@ -28,6 +28,9 @@ The API container runs `alembic upgrade head` before serving requests; the initi
 | Local Ollama API | http://localhost:11434 |
 | Qdrant dashboard | http://localhost:6333/dashboard |
 | MCP Streamable HTTP | http://localhost:8001/mcp |
+| Prometheus | http://localhost:9090 |
+| Grafana | http://localhost:3001 |
+| Jaeger trace viewer | http://localhost:16686 |
 
 All host port bindings are restricted to loopback (127.0.0.1). The browser loads API and Keycloak addresses from the Next.js /runtime-config route, so WEB_API_BASE_URL and WEB_KEYCLOAK_URL in .env are read when the container starts, not baked into the JavaScript bundle.
 
@@ -54,6 +57,12 @@ docker compose down
 
 The application and Keycloak identity stores run in separate PostgreSQL services, each backed by its own named volume. Both preserve data across ordinary container recreation. Do not use docker compose down -v unless you intend to delete the local application database, identity store and snapshot history.
 
+## Monitoring and tracing
+
+Prometheus scrapes the API's internal `/metrics` endpoint. Grafana provisions the TwinFixeno operations dashboard and Prometheus/Jaeger data sources. Jaeger receives HTTP request spans and AI indexing/query spans. The spans carry model/prompt/retrieval versions and content hashes, not question/answer bodies or bearer tokens. Host ports are loopback-only. Grafana local demo credentials are `admin` / `local-grafana-password`; change them before sharing this environment. Use `docker compose logs` for container logs; this release does not provide central log aggregation, SIEM forwarding or alert notification routing.
+
+The Grafana dashboard shows API availability, request throughput, 5xx rate, p95 latency, RAG query rate, FHIR sync outcomes and snapshot operations. Jaeger provides request and AI trace search for service `twinfixeno-api`.
+
 ## What the integrated release contains
 
 - Keycloak OIDC login, role-aware UI and patient-level API authorisation.
@@ -68,7 +77,7 @@ The application and Keycloak identity stores run in separate PostgreSQL services
 - Deterministic context report retained as a fallback.
 - Administrator patient access grants and application audit-event review.
 
-The current percentage-delta scenario is arithmetic only, not a physiology simulator. Distributed tracing, enterprise observability, model/prompt/tool version governance and clinical AI evaluation are not implemented.
+The current percentage-delta scenario is arithmetic only, not a physiology simulator. Prometheus metrics, Grafana dashboards and Jaeger request/AI traces are bundled for local operations. Centralised log aggregation/SIEM, model/prompt/tool rollback registry and clinical AI evaluation remain outstanding.
 
 ## Production deployment status
 
