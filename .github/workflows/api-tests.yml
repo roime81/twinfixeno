@@ -14,6 +14,7 @@ on:
 jobs:
   api-tests:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     defaults:
       run:
         working-directory: services/api
@@ -28,9 +29,24 @@ jobs:
           cache-dependency-path: services/api/requirements.txt
       - name: Install dependencies
         run: pip install -r requirements.txt
+      - name: Start HAPI FHIR R4
+        run: docker run --detach --name twinfixeno-hapi -p 8090:8080 hapiproject/hapi:v7.4.0
+      - name: Wait for HAPI FHIR readiness
+        run: |
+          for attempt in $(seq 1 60); do
+            if curl --fail --silent http://localhost:8090/fhir/metadata >/dev/null; then
+              echo "HAPI FHIR R4 is ready"
+              exit 0
+            fi
+            sleep 5
+          done
+          docker logs twinfixeno-hapi
+          exit 1
       - name: Run API tests
         env:
           DATABASE_URL: sqlite:///./ci-test.db
           AUTH_REQUIRED: "false"
           PYTHONPATH: ${{ github.workspace }}/services/api
+          FHIR_BASE_URL: http://localhost:8090/fhir
+          FHIR_INTEGRATION_TESTS: "1"
         run: pytest -q
