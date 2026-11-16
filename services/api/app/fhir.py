@@ -54,7 +54,7 @@ def upsert_demo_patient(patient):
     return {"created": True, "resource": created.json()}
 
 def _patient_reference(resource: dict) -> str | None:
-    reference = resource.get("subject", {}).get("reference") or resource.get("patient", {}).get("reference")
+    reference = (resource.get("subject") or {}).get("reference") or (resource.get("patient") or {}).get("reference")
     return reference if isinstance(reference, str) else None
 
 def _effective_date(resource: dict, resource_type: str):
