@@ -2,6 +2,6 @@ apisix:
   node_listen: 9080
   enable_admin: false
 deployment:
-  role: traditional
-  role_traditional:
+  role: data_plane
+  role_data_plane:
     config_provider: yaml
