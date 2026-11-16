@@ -93,6 +93,20 @@ export default function Home() {
   async function loadPatient(patientId: number) {
     setLoading(true);
     setError("");
+    // Clear patient-scoped state before switching context. Never leave the prior
+    // patient's records or AI answer visible while the next patient is loading.
+    setObservations([]);
+    setTimeline([]);
+    setSnapshots([]);
+    setSimulations([]);
+    setPermissions({ can_read: false, can_write: false, can_manage_access: false });
+    setSelectedSnapshot(null);
+    setContextReport(null);
+    setRagAnswer(null);
+    setRagQuestion("");
+    setGrants([]);
+    setAuditEvents([]);
+    setRagStatus(null);
     try {
       const [patientData, obs, events, snapshotItems, simItems, perms] = await Promise.all([
         api<Patient>("/api/v1/patients/" + patientId),
@@ -199,6 +213,22 @@ export default function Home() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authenticated, view, selectedPatientId, canAdmin]);
+
+  useEffect(() => {
+    if (!authenticated || view !== "copilot") return;
+    let active = true;
+    setRagStatus(null);
+    api<any>("/api/v1/ai/status")
+      .then(status => { if (active) setRagStatus(status); })
+      .catch((err: any) => {
+        if (active) {
+          setRagStatus({ ready: false, detail: err?.message || "Unable to reach local AI services." });
+        }
+      });
+    return () => { active = false; };
+    // API client is stable for the lifetime of this authenticated page.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authenticated, view]);
 
   async function selectPatient(id: number) {
     setSelectedPatientId(id);
@@ -430,12 +460,12 @@ export default function Home() {
 
         {!loading && patient && view === "copilot" && (
           <section className="panel">
-            <div className="panel-heading"><div><span className="eyebrow">LOCAL OPEN-SOURCE AI</span><h3>Evidence assistant</h3><p className="panel-copy">Ollama LLM + embeddings + patient-scoped Qdrant retrieval. No external AI API.</p></div><span className="state-pill">{ragStatus?.ready ? "AI ready" : "Checking AI services"}</span></div>
-            <div className="assistant-banner"><div className="assistant-icon">✳</div><div><strong>Private, evidence-grounded RAG</strong><p>Index the selected patient's records, then ask questions. Answers include retrieved source evidence. Synthetic data only; not clinical decision support.</p></div></div>
+            <div className="panel-heading"><div><span className="eyebrow">LOCAL OPEN-SOURCE AI</span><h3>Evidence assistant</h3><p className="panel-copy">Ollama LLM + embeddings + patient-scoped Qdrant retrieval. No external AI API.</p></div><span className={ragStatus?.ready ? "state-pill good" : ragStatus ? "state-pill bad" : "state-pill"}>{ragStatus?.ready ? "AI ready" : ragStatus ? "AI unavailable" : "Checking AI services"}</span></div>
+            <div className="assistant-banner"><div className="assistant-icon">✳</div><div><strong>Private, evidence-grounded RAG</strong><p>Index the selected patient's records, then ask questions. Answers include retrieved source evidence. Synthetic data only; not clinical decision support.</p>{ragStatus && <small>{ragStatus.ready ? "Models and vector store are connected." : (ragStatus.detail || ragStatus.ollama_error || ragStatus.qdrant_error || "The local model or vector store is not ready. Check Docker logs and model download status.")}</small>}</div></div>
             <button className="button button-secondary" disabled={busy} onClick={async () => { try { setRagStatus(await api<any>("/api/v1/ai/status")); } catch (e:any) { setError(e.message); } }}>Check local AI status</button>
-            <button className="button" disabled={busy || !permissions.can_write} onClick={async () => { setBusy(true); setError(""); try { const result=await api<any>("/api/v1/patients/"+patient.id+"/rag/index",{method:"POST"}); setNotice("Indexed "+result.indexed+" patient evidence records using "+result.embedding_model+"."); setRagStatus(await api<any>("/api/v1/ai/status")); } catch(e:any) { setError(e.message); } finally { setBusy(false); } }}>Index this patient's records</button>
+            <button className="button" disabled={busy || !permissions.can_write || !ragStatus?.ready} onClick={async () => { setBusy(true); setError(""); try { const result=await api<any>("/api/v1/patients/"+patient.id+"/rag/index",{method:"POST"}); setNotice("Indexed "+result.indexed+" patient evidence records using "+result.embedding_model+"."); setRagStatus(await api<any>("/api/v1/ai/status")); } catch(e:any) { setError(e.message); } finally { setBusy(false); } }}>Index this patient's records</button>
             <div className="form-field"><label htmlFor="rag-question">Ask about the recorded evidence</label><textarea id="rag-question" value={ragQuestion} onChange={e=>setRagQuestion(e.target.value)} placeholder="Summarise the recorded observations and cite the source records." rows={3}/></div>
-            <button className="button" disabled={busy || ragQuestion.trim().length<3} onClick={async()=>{setBusy(true);setError("");try{setRagAnswer(await api<any>("/api/v1/patients/"+patient.id+"/rag/query",{method:"POST",body:JSON.stringify({question:ragQuestion,top_k:5})}));}catch(e:any){setError(e.message);}finally{setBusy(false);}}}>Ask local evidence assistant</button>
+            <button className="button" disabled={busy || !ragStatus?.ready || ragQuestion.trim().length<3} onClick={async()=>{setBusy(true);setError("");try{setRagAnswer(await api<any>("/api/v1/patients/"+patient.id+"/rag/query",{method:"POST",body:JSON.stringify({question:ragQuestion,top_k:5})}));}catch(e:any){setError(e.message);}finally{setBusy(false);}}}>Ask local evidence assistant</button>
             {ragAnswer && <div className="context-report"><h4>Answer · {ragAnswer.model}</h4><p>{ragAnswer.answer}</p><h4>Retrieved evidence</h4>{(ragAnswer.sources||[]).map((source:any)=><div className="list-row" key={source.rank}><div><strong>[{source.rank}] {source.source_type} · {source.source_id}</strong><small>{source.text}</small><small>Relevance {Number(source.score).toFixed(3)} · SHA-256 {source.content_sha256}</small></div></div>)}<p className="muted">{ragAnswer.disclaimer}</p></div>}
             {contextReport && <div className="context-report"><h4>Deterministic fallback report</h4><p>{contextReport.observation_count} observations and {contextReport.fhir_resource_count} FHIR resources.</p></div>}
             <button className="button button-secondary" disabled={busy} onClick={() => void generateContext()}>Generate deterministic fallback report</button>
