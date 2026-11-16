@@ -126,3 +126,17 @@ def test_rag_query_audit_keeps_version_metadata_without_storing_answer(client, m
         assert event.details["retrieved_chunks"] == 1
         assert "answer" not in event.details
         assert "Sensitive generated answer text" not in str(event.details)
+
+
+def test_prometheus_metrics_endpoint_exposes_api_and_workflow_metrics(client):
+    # Generate an observed request before reading metrics; the metrics endpoint
+    # itself is excluded from HTTP request instrumentation to avoid recursion.
+    assert client.get("/health").status_code == 200
+    response = client.get("/metrics")
+    assert response.status_code == 200
+    payload = response.text
+    assert "http_requests_total" in payload
+    assert "twinfixeno_rag_queries_total" in payload
+    assert "twinfixeno_rag_index_operations_total" in payload
+    assert "twinfixeno_fhir_sync_operations_total" in payload
+    assert "twinfixeno_snapshot_operations_total" in payload
