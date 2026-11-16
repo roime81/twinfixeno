@@ -318,6 +318,9 @@ def create_access_grant(patient_id: int, grant: AccessGrantIn, request: Request,
     require_role(user, {"twinfixeno-admin"})
     if not grant.username and not grant.user_subject:
         raise HTTPException(status_code=422, detail="Provide username or user_subject")
+    allow_username = os.getenv("ALLOW_USERNAME_PATIENT_GRANTS", "false").lower() in {"1", "true", "yes"}
+    if grant.username and not grant.user_subject and not allow_username:
+        raise HTTPException(status_code=400, detail="Username-only grants are disabled; provide the immutable Keycloak subject ID")
     if db.get(Patient, patient_id) is None:
         raise HTTPException(status_code=404, detail="Patient not found")
     filters = []
