@@ -12,8 +12,8 @@ mcp=FastMCP(
 def invoke(ctx,method,path,body=None):
  headers=dict(ctx.request_context.request.headers); auth=headers.get("authorization") or headers.get("Authorization")
  if not auth or not auth.lower().startswith("bearer "): raise ValueError("Authenticated Keycloak bearer token required")
- r=requests.request(method,API+path,headers={"Authorization":auth,"Content-Type":"application/json"},json=body,timeout=120)
- if r.status_code>=400: raise ValueError(f"TwinFixeno API rejected request ({r.status_code}): {r.text[:400]}")
+ r=requests.request(method,API+path,headers={"Authorization":auth,"Content-Type":"application/json"},json=body,timeout=(5,120))
+ if r.status_code>=400: raise ValueError(f"TwinFixeno API rejected request (HTTP {r.status_code})")
  return r.json() if r.content else {"status":"ok"}
 @mcp.tool()
 def get_patient_timeline(patient_id:int,ctx:Context)->dict:
