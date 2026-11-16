@@ -18,11 +18,10 @@ async function signInAsDemoUser(
   // Update the password during the first browser login; Compose CI starts
   // with an empty identity volume, so this is repeatable for every run.
   const passwordUpdate = page.locator('input[name="password-new"]');
-  if (await passwordUpdate.isVisible({ timeout: 5_000 }).catch(() => false)) {
-    await passwordUpdate.fill(replacementPassword);
-    await page.locator('input[name="password-confirm"]').fill(replacementPassword);
-    await page.locator('input[type="submit"]').last().click();
-  }
+  await expect(passwordUpdate).toBeVisible({ timeout: 30_000 });
+  await passwordUpdate.fill(replacementPassword);
+  await page.locator('input[name="password-confirm"]').fill(replacementPassword);
+  await page.locator('button[type="submit"], input[type="submit"]').last().click();
 
   await expect(page.getByRole("heading", { name: "Command centre" })).toBeVisible({
     timeout: 90_000,
