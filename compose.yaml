@@ -64,9 +64,36 @@ services:
         condition: service_started
     networks: [internal]
 
+  fhir-db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: hapi
+      POSTGRES_USER: ${FHIR_DB_USER:-hapi}
+      POSTGRES_PASSWORD: ${FHIR_DB_PASSWORD:-local-fhir-password}
+    volumes:
+      - fhir_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $POSTGRES_USER -d $POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 15
+      start_period: 10s
+    networks: [internal]
+
   fhir:
     image: hapiproject/hapi:v7.4.0
     restart: unless-stopped
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://fhir-db:5432/hapi
+      SPRING_DATASOURCE_USERNAME: ${FHIR_DB_USER:-hapi}
+      SPRING_DATASOURCE_PASSWORD: ${FHIR_DB_PASSWORD:-local-fhir-password}
+      SPRING_DATASOURCE_DRIVER_CLASS_NAME: org.postgresql.Driver
+      HIBERNATE_DIALECT: ca.uhn.fhir.jpa.model.dialect.HapiFhirPostgresDialect
+      SPRING_JPA_PROPERTIES_HIBERNATE_SEARCH_ENABLED: "false"
+    depends_on:
+      fhir-db:
+        condition: service_healthy
     ports:
       - "127.0.0.1:${FHIR_PORT:-8090}:8080"
     networks: [internal]
@@ -266,6 +293,7 @@ services:
 volumes:
   postgres_data:
   keycloak_postgres_data:
+  fhir_postgres_data:
   ollama_data:
   qdrant_data:
   prometheus_data:
