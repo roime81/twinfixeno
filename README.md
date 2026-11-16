@@ -323,7 +323,7 @@ Update local development values as required. Never commit populated secrets or p
 
 ### 3. Build and start containers
 
-Once `compose.yaml` and the service Dockerfiles have been added:
+From the repository root, with Docker Desktop or Docker Engine running:
 
 ```bash
 docker compose pull
@@ -357,7 +357,7 @@ docker compose down -v
 
 ### 4. Initialise the database
 
-The implementation will provide versioned Alembic migrations. The planned command is:
+Formal Alembic migrations are a follow-up; the current API creates its initial schema on startup. The planned migration command is:
 
 ```bash
 docker compose exec api alembic upgrade head
@@ -438,7 +438,7 @@ pip install -e "services/api[dev]"
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-The exact package commands and working directories will be aligned with the committed project manifests during implementation.
+The current container workflow is the supported quick start. The standalone developer commands are retained for the next development iteration.
 
 ### Local LLM
 
