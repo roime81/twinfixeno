@@ -135,3 +135,59 @@ def test_admin_cannot_create_username_only_grant_when_disabled(client, monkeypat
         "username": "some.user", "access_level": "read",
     })
     assert response.status_code == 400
+
+
+def test_subject_grant_takes_precedence_over_demo_username_fallback(client, monkeypatch):
+    from app.main import app
+    from app.auth import get_current_user
+    from app.database import SessionLocal
+    from app.models import PatientAccessGrant
+
+    monkeypatch.setenv("ALLOW_USERNAME_PATIENT_GRANTS", "true")
+    with SessionLocal() as db:
+        db.add(PatientAccessGrant(
+            patient_id=1, user_subject="current-subject",
+            username="demo.clinician", access_level="read",
+        ))
+        db.commit()
+
+    app.dependency_overrides[get_current_user] = lambda: {
+        "sub": "current-subject",
+        "preferred_username": "demo.clinician",
+        "roles": ["clinician"],
+    }
+    response = client.post("/api/v1/patients/1/snapshots")
+    assert response.status_code == 403
+
+
+def test_admin_grant_upsert_uses_subject_not_username_or_match(client):
+    from app.main import app
+    from app.auth import get_current_user
+    from app.database import SessionLocal
+    from app.models import PatientAccessGrant
+    from sqlalchemy import select
+
+    with SessionLocal() as db:
+        db.add(PatientAccessGrant(
+            patient_id=1, user_subject="old-subject",
+            username="person@example", access_level="read",
+        ))
+        db.commit()
+
+    app.dependency_overrides[get_current_user] = lambda: {
+        "sub": "admin-subject", "preferred_username": "admin",
+        "roles": ["twinfixeno-admin"],
+    }
+    response = client.post("/api/v1/patients/1/access-grants", json={
+        "username": "person@example",
+        "user_subject": "new-subject",
+        "access_level": "write",
+    })
+    assert response.status_code == 201
+
+    with SessionLocal() as db:
+        grants = list(db.scalars(select(PatientAccessGrant).where(
+            PatientAccessGrant.patient_id == 1,
+        )).all())
+        assert any(item.user_subject == "old-subject" and item.access_level == "read" for item in grants)
+        assert any(item.user_subject == "new-subject" and item.access_level == "write" for item in grants)
