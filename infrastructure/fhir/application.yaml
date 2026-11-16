@@ -1,0 +1,16 @@
+spring:
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://fhir-db:5432/hapi}
+    username: ${SPRING_DATASOURCE_USERNAME:hapi}
+    password: ${SPRING_DATASOURCE_PASSWORD:local-fhir-password}
+    driverClassName: ${SPRING_DATASOURCE_DRIVER_CLASS_NAME:org.postgresql.Driver}
+  jpa:
+    hibernate:
+      ddl-auto: update
+    properties:
+      hibernate:
+        dialect: ${HIBERNATE_DIALECT:ca.uhn.fhir.jpa.model.dialect.HapiFhirPostgresDialect}
+        hbm2ddl:
+          auto: update
+        search:
+          enabled: false
