@@ -149,6 +149,11 @@ flowchart TB
     MCP[MCP Streamable HTTP] -->|Forwards caller bearer token| API
     API --> AUDIT[Application Audit Events]
     API --> TWIN[Snapshot / Timeline / Simulation Modules]
+    API --> OTEL[OpenTelemetry traces]
+    API --> PROM[Prometheus metrics]
+    OTEL --> JAEGER[Jaeger trace UI]
+    PROM --> GRAFANA[Grafana dashboards]
+    JAEGER --> GRAFANA
 ```
 
 The browser uses the APISIX gateway at `http://localhost:9080` for API requests. The direct FastAPI port at `http://localhost:8000` is retained for local OpenAPI and diagnostics. Keycloak is reached by the browser at `http://localhost:8081`; the API validates tokens using its internal Keycloak JWKS URL.
@@ -188,7 +193,7 @@ The table distinguishes components actually present in the current Compose stack
 | Vector store | Qdrant 1.13.2 | Patient-filtered retrieval |
 | Tool protocol | Python MCP SDK / FastMCP | Timeline, evidence indexing and evidence query tools |
 | Containers | Docker Compose | Local bundled development environment |
-| Observability | Not yet implemented | No integrated OpenTelemetry/Prometheus/Grafana/Loki stack |
+| Observability | Prometheus API metrics, OpenTelemetry request/AI spans, Grafana dashboard and Jaeger trace viewer | Bundled for local operations; no central log aggregation/SIEM |
 | Clinical simulation | Not yet implemented | Current scenario engine is a bounded percentage-delta calculation, not physiology |
 | Database migrations | Not yet implemented | Runtime schema creation remains; Alembic and tested migration paths are required before production |
 
@@ -360,6 +365,9 @@ These are the development endpoints defined by the current `compose.yaml`. Keycl
 | HAPI FHIR R4 | http://localhost:8090/fhir/metadata |
 | Ollama API | http://localhost:11434 |
 | Qdrant dashboard | http://localhost:6333/dashboard |
+| Prometheus | http://localhost:9090 |
+| Grafana | http://localhost:3001 |
+| Jaeger trace viewer | http://localhost:16686 |
 | MCP Streamable HTTP | http://localhost:8001/mcp |
 
 ### Developer workflow
@@ -658,7 +666,8 @@ Clinical correctness cannot be established by software tests alone. Domain exper
 - [x] Local deterministic patient context summary (not an LLM)
 
 ### Milestone 5 — Hardening and demonstration
-- [ ] Dedicated OpenTelemetry / Prometheus / Grafana / centralised logging stack
+- [x] API request metrics, OpenTelemetry request/AI spans, Prometheus scraping, Grafana dashboards and Jaeger trace viewer
+- [ ] Centralised log aggregation, retention, alert routing and SIEM integration
 - [x] Automated API integration tests, live HAPI FHIR CI and RAG access-boundary tests
 - [x] Next.js production build in CI
 - [x] Docker Compose configuration/build/start smoke workflow
