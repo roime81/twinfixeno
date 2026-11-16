@@ -16,6 +16,13 @@ def test_sync_ingests_observation_condition_and_encounter(client, monkeypatch):
     items = timeline.json()["items"]
     assert {item["resource_type"] for item in items} == {"Observation","Condition","Encounter"}
     assert items[0]["effective_at"] is not None
+    snapshot = client.post("/api/v1/patients/1/snapshots")
+    assert snapshot.status_code == 201
+    assert snapshot.json()["provenance"]["fhir_resource_count"] == 3
+    assert "hapi-fhir" in snapshot.json()["provenance"]["source_systems"]
+    again = client.post("/api/v1/patients/1/fhir/sync")
+    assert again.status_code == 200
+    assert client.get("/api/v1/patients/1/timeline").json()["count"] == 3
 
 def test_resource_with_different_patient_reference_is_not_ingested(client, monkeypatch):
     monkeypatch.setattr(fhir, "search_resources", lambda resource_type, patient_id: [
