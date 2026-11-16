@@ -72,6 +72,8 @@ export default function Home() {
 
   const patient = useMemo(() => patients.find(item => item.id === selectedPatientId) || null, [patients, selectedPatientId]);
   const canAdmin = roles.includes("twinfixeno-admin");
+  const roleLabel = canAdmin ? "Administrator" : roles.includes("clinician") ? "Clinician" : roles.includes("researcher") ? "Researcher (read-only)" : "User";
+  const visibleViews = VIEWS.filter(item => item.id !== "governance" || canAdmin);
 
   async function api<T = any>(path: string, init: RequestInit = {}): Promise<T> {
     const client = keycloak.current;
@@ -368,7 +370,7 @@ export default function Home() {
         <div className="subbrand">Healthcare Digital Twin</div>
         <div className="env-chip"><span className="status-dot" /> Synthetic data workspace</div>
         <nav className="nav-list" aria-label="Main navigation">
-          {VIEWS.map(item => (
+          {visibleViews.map(item => (
             <button key={item.id} className={view === item.id ? "nav-item active" : "nav-item"} onClick={() => setView(item.id)}>
               <span className="nav-icon">{item.icon}</span><span>{item.label}</span>
             </button>
@@ -382,7 +384,7 @@ export default function Home() {
           <div className="topbar-context"><span className="eyebrow">WORKSPACE / {view.toUpperCase()}</span><h1>{VIEWS.find(item => item.id === view)?.label}</h1><p>{patient ? displayPatient(patient) + " · " + patient.external_id : "No patient selected"}</p></div>
           <div className="topbar-actions">
             {patients.length > 0 && <label className="patient-switch"><span>ACTIVE TWIN</span><select value={selectedPatientId ?? ""} onChange={event => void selectPatient(Number(event.target.value))}>{patients.map(item => <option value={item.id} key={item.id}>{item.external_id} · {displayPatient(item)}</option>)}</select></label>}
-            <div className="user-chip"><span className="user-avatar">{username.slice(0, 1).toUpperCase()}</span><span>{username}</span></div>
+            <div className="user-chip"><span className="user-avatar">{username.slice(0, 1).toUpperCase()}</span><span>{username}<small>{roleLabel}</small></span></div>
             <button className="button button-quiet" onClick={() => keycloak.current?.logout({ redirectUri: window.location.origin })}>Sign out</button>
           </div>
         </header>
