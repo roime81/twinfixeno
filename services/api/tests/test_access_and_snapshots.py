@@ -23,7 +23,7 @@ def test_researcher_is_read_only(client):
     from app.main import app
     from app.auth import get_current_user
     app.dependency_overrides[get_current_user] = lambda: {
-        "sub": "research-sub", "preferred_username": "demo.clinician",
+        "sub": "research-sub", "preferred_username": "demo.researcher",
         "roles": ["researcher"]
     }
     assert client.get("/api/v1/patients/1").status_code == 200
@@ -63,3 +63,23 @@ def test_snapshot_artifact_rejects_mutation(client):
         with pytest.raises(ValueError):
             db.commit()
         db.rollback()
+
+
+def test_snapshot_header_is_immutable(client):
+    from app.models import TwinSnapshot
+    client.post("/api/v1/patients/1/snapshots")
+    with SessionLocal() as db:
+        snapshot = db.scalar(select(TwinSnapshot))
+        snapshot.summary = "tampered"
+        with pytest.raises(ValueError):
+            db.commit()
+        db.rollback()
+
+def test_local_web_origin_passes_cors_preflight(client):
+    response = client.options("/api/v1/patients", headers={
+        "Origin": "http://localhost:3000",
+        "Access-Control-Request-Method": "GET",
+        "Access-Control-Request-Headers": "authorization"
+    })
+    assert response.status_code == 200
+    assert response.headers["access-control-allow-origin"] == "http://localhost:3000"
