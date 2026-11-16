@@ -1,67 +1,131 @@
 services:
   postgres:
     image: postgres:16-alpine
+    restart: unless-stopped
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-twinfixeno}
       POSTGRES_USER: ${POSTGRES_USER:-twinfixeno}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-local-development-only}
-    volumes: [postgres_data:/var/lib/postgresql/data]
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-twinfixeno} -d ${POSTGRES_DB:-twinfixeno}"]
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
       interval: 5s
       timeout: 5s
-      retries: 10
+      retries: 15
+      start_period: 10s
     networks: [internal]
+
+  keycloak-db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: keycloak
+      POSTGRES_USER: keycloak
+      POSTGRES_PASSWORD: ${KEYCLOAK_DB_PASSWORD:-local-keycloak-password}
+    volumes:
+      - keycloak_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U keycloak -d keycloak"]
+      interval: 5s
+      timeout: 5s
+      retries: 15
+      start_period: 10s
+    networks: [internal]
+
   keycloak:
     image: quay.io/keycloak/keycloak:26.1.4
+    restart: unless-stopped
     command: ["start-dev", "--import-realm", "--http-port=8080"]
     environment:
       KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_ADMIN:-admin}
       KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-change-me-before-use}
       KC_HEALTH_ENABLED: "true"
+      KC_DB: postgres
+      KC_DB_URL_HOST: keycloak-db
+      KC_DB_URL_DATABASE: keycloak
+      KC_DB_USERNAME: keycloak
+      KC_DB_PASSWORD: ${KEYCLOAK_DB_PASSWORD:-local-keycloak-password}
     volumes:
       - ./infrastructure/keycloak/realm-twinfixeno.json:/opt/keycloak/data/import/realm-twinfixeno.json:ro
-    ports: ["8081:8080"]
+    ports:
+      - "${KEYCLOAK_PORT:-8081}:8080"
+    depends_on:
+      keycloak-db:
+        condition: service_healthy
     networks: [internal]
+
   fhir:
     image: hapiproject/hapi:v7.4.0
-    ports: ["8090:8080"]
+    restart: unless-stopped
+    ports:
+      - "${FHIR_PORT:-8090}:8080"
     networks: [internal]
+
   api:
-    build: ./services/api
+    build:
+      context: ./services/api
+    restart: unless-stopped
     environment:
-      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://twinfixeno:local-development-only@postgres:5432/twinfixeno}
-      KEYCLOAK_ISSUER: http://localhost:8081/realms/twinfixeno
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-twinfixeno}:${POSTGRES_PASSWORD:-local-development-only}@postgres:5432/${POSTGRES_DB:-twinfixeno}
+      KEYCLOAK_ISSUER: ${KEYCLOAK_ISSUER:-http://localhost:8081/realms/twinfixeno}
       KEYCLOAK_JWKS_URL: http://keycloak:8080/realms/twinfixeno/protocol/openid-connect/certs
       JWT_AUDIENCE: twinfixeno-api
       AUTH_REQUIRED: ${AUTH_REQUIRED:-true}
       FHIR_BASE_URL: http://fhir:8080/fhir
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
     depends_on:
-      postgres: {condition: service_healthy}
-      keycloak: {condition: service_started}
-      fhir: {condition: service_started}
-    ports: ["8000:8000"]
+      postgres:
+        condition: service_healthy
+      keycloak:
+        condition: service_started
+      fhir:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/ready', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    ports:
+      - "${API_PORT:-8000}:8000"
     networks: [internal]
+
   web:
-    build: ./apps/web
+    build:
+      context: ./apps/web
+    restart: unless-stopped
     environment:
-      NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:9080}
-      NEXT_PUBLIC_KEYCLOAK_URL: http://localhost:8081
-      NEXT_PUBLIC_KEYCLOAK_REALM: twinfixeno
-      NEXT_PUBLIC_KEYCLOAK_CLIENT_ID: twinfixeno-web
-    depends_on: [api, keycloak]
-    ports: ["3000:3000"]
+      WEB_API_BASE_URL: ${WEB_API_BASE_URL:-http://localhost:9080}
+      WEB_KEYCLOAK_URL: ${WEB_KEYCLOAK_URL:-http://localhost:8081}
+      WEB_KEYCLOAK_REALM: ${WEB_KEYCLOAK_REALM:-twinfixeno}
+      WEB_KEYCLOAK_CLIENT_ID: ${WEB_KEYCLOAK_CLIENT_ID:-twinfixeno-web}
+    depends_on:
+      api:
+        condition: service_healthy
+      keycloak:
+        condition: service_started
+    ports:
+      - "${WEB_PORT:-3000}:3000"
     networks: [internal]
+
   apisix:
     image: apache/apisix:3.9.1-debian
+    restart: unless-stopped
     volumes:
       - ./infrastructure/apisix/config.yaml:/usr/local/apisix/conf/config.yaml:ro
       - ./infrastructure/apisix/apisix.yaml:/usr/local/apisix/conf/apisix.yaml:ro
-    ports: ["9080:9080"]
-    depends_on: [api]
+    ports:
+      - "${APISIX_PORT:-9080}:9080"
+    depends_on:
+      api:
+        condition: service_healthy
     networks: [internal]
+
 volumes:
   postgres_data:
+  keycloak_postgres_data:
+
 networks:
   internal:
     driver: bridge

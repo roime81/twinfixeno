@@ -4,7 +4,7 @@
 
 TWINFixeno is an early-stage, design-driven MVP for creating a longitudinal digital representation of a patient's health journey. It brings together interoperable clinical data, versioned patient-state snapshots, explainable analytics, hypothetical scenario exploration, private local language models and governed Model Context Protocol (MCP) tools.
 
-> **Project status:** MVP foundation now includes Keycloak OIDC, patient-level access grants, HAPI FHIR Patient synchronisation, Observation/Condition/Encounter ingestion, FHIR-backed timeline, immutable snapshot artifacts with SHA-256 provenance, and automated API tests. GitHub Actions has passed 12 tests, including a live HAPI FHIR R4 ingestion test.
+> **Project status:** The 0.4.0 workspace includes functional patient registry, clinical timeline, FHIR integration, snapshot history and integrity inspection, and administrator access-grant management. The Compose stack includes persistent PostgreSQL stores for the application and Keycloak. See [the operations guide](docs/OPERATIONS.md) for the one-command local deployment and the production deployment gate.
 
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![Status](https://img.shields.io/badge/status-MVP%20in%20development-orange.svg)](#roadmap)
@@ -731,6 +731,10 @@ Contribution guidelines and a code of conduct will be added as the project matur
 ## Licence
 
 The intended project licence is **Apache License 2.0**. A `LICENSE` file must be added to the repository before the licence is considered formally applied. Third-party dependencies, model weights and datasets retain their own licences and terms.
+
+## Operations and deployment
+
+See [docs/OPERATIONS.md](docs/OPERATIONS.md) for the full Docker Compose quick start, service URLs, demo roles, persistence notes and production hardening requirements. The default Compose configuration is a local synthetic-data environment, not an internet-facing production deployment.
 
 ## Disclaimer
 
