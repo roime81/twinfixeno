@@ -38,7 +38,7 @@ The integrated Compose stack is a runnable synthetic-data development/review env
 - The repository now has an initial Alembic baseline that creates/adopts the current schema and installs PostgreSQL immutability triggers. CI exercises upgrade → downgrade → upgrade on SQLite. Before production, replace the metadata-based baseline with reviewed explicit revisions for every future schema change, rehearse production PostgreSQL upgrade/rollback (or forward-fix) procedures, and run migrations as a controlled deployment job.
 - Configure supported production PostgreSQL and HAPI FHIR databases, encryption at rest, backup schedules, restore tests, retention, high availability and disaster recovery objectives. The current Compose HAPI FHIR container is not configured with a supported external persistent database and must be replaced or explicitly configured before production.
 - Add independent tamper-evident audit storage and access reviews. The current audit table and snapshot SHA-256 checksum are not a signed, independently immutable evidence system.
-- Define operational ownership, SLOs, incident response, patching, vulnerability management and dependency/SBOM processes.
+- Define operational ownership, SLOs, incident response, patching, vulnerability management and dependency/SBOM processes. A local Prometheus/Grafana/Jaeger stack is bundled, but production retention, alert routing, centralised logs, SIEM forwarding and secured monitoring access require deployment-specific configuration.
 
 ### AI and simulation safety
 - The local AI path is implemented for synthetic-data demonstration: Ollama serves Qwen 2.5 3B and nomic-embed-text; Qdrant stores embeddings; API retrieval filters by patient ID; MCP forwards caller bearer tokens to the API.
