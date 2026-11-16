@@ -165,6 +165,21 @@ jobs:
                   raise SystemExit("MCP initialize handshake failed: " + payload[:500])
               print("PASS MCP Streamable HTTP initialize handshake")
           PY
+      - name: Set up Node.js for browser E2E
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install browser test packages
+        working-directory: apps/web
+        run: |
+          npm install --no-audit --no-fund
+          npx playwright install --with-deps chromium
+      - name: Run browser E2E workflows
+        working-directory: apps/web
+        env:
+          CI: "true"
+          PW_BASE_URL: http://localhost:3000
+        run: npm run test:e2e
       - name: Collect container diagnostics on failure
         if: failure()
         run: |
