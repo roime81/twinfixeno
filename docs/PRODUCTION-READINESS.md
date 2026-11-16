@@ -23,7 +23,7 @@ The integrated Compose stack is a runnable synthetic-data development/review env
 
 ### Identity and network security
 - Replace Keycloak `start-dev` and the development realm with a production Keycloak deployment and reviewed realm/client configuration.
-- Remove demo identities and bootstrap passwords. Enforce approved MFA, password, session, account lifecycle and privileged-access controls.
+- Set `SEED_DEMO_DATA=false`, remove demo identities and bootstrap passwords, and replace the development realm. Enforce approved MFA, password, session, account lifecycle and privileged-access controls.
 - Deploy TLS for every browser and service boundary. Configure exact public hostnames, OIDC issuer, redirect URIs, trusted proxy and cookie settings.
 - Do not expose API, HAPI FHIR or database ports directly to untrusted networks. Put ingress behind an approved reverse proxy/WAF and apply gateway rate limits and request-size limits.
 - Rotate all default credentials, use a secret manager, and verify no secrets are present in Compose files, images, CI logs or Git history.
@@ -35,7 +35,7 @@ The integrated Compose stack is a runnable synthetic-data development/review env
 - Complete privacy impact assessment, clinical safety assessment and applicable Malaysian legal/regulatory review before processing identifiable health data.
 
 ### Persistence and recovery
-- Add Alembic migrations, tested upgrade/rollback paths and a controlled migration job. `Base.metadata.create_all` is not a production migration strategy.
+- The repository now has an initial Alembic baseline that creates/adopts the current schema and installs PostgreSQL immutability triggers. CI exercises upgrade → downgrade → upgrade on SQLite. Before production, replace the metadata-based baseline with reviewed explicit revisions for every future schema change, rehearse production PostgreSQL upgrade/rollback (or forward-fix) procedures, and run migrations as a controlled deployment job.
 - Configure supported production PostgreSQL and HAPI FHIR databases, encryption at rest, backup schedules, restore tests, retention, high availability and disaster recovery objectives. The current Compose HAPI FHIR container is not configured with a supported external persistent database and must be replaced or explicitly configured before production.
 - Add independent tamper-evident audit storage and access reviews. The current audit table and snapshot SHA-256 checksum are not a signed, independently immutable evidence system.
 - Define operational ownership, SLOs, incident response, patching, vulnerability management and dependency/SBOM processes.
