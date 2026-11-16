@@ -1,0 +1,42 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-twinfixeno}
+      POSTGRES_USER: ${POSTGRES_USER:-twinfixeno}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-local-development-only}
+    volumes: [postgres_data:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-twinfixeno} -d ${POSTGRES_DB:-twinfixeno}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks: [internal]
+  api:
+    build: ./services/api
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://twinfixeno:local-development-only@postgres:5432/twinfixeno}
+    depends_on:
+      postgres: {condition: service_healthy}
+    ports: ["8000:8000"]
+    networks: [internal]
+  web:
+    build: ./apps/web
+    environment:
+      NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:9080}
+    depends_on: [api]
+    ports: ["3000:3000"]
+    networks: [internal]
+  apisix:
+    image: apache/apisix:3.9.1-debian
+    volumes:
+      - ./infrastructure/apisix/config.yaml:/usr/local/apisix/conf/config.yaml:ro
+      - ./infrastructure/apisix/apisix.yaml:/usr/local/apisix/conf/apisix.yaml:ro
+    ports: ["9080:9080"]
+    depends_on: [api]
+    networks: [internal]
+volumes:
+  postgres_data:
+networks:
+  internal:
+    driver: bridge
