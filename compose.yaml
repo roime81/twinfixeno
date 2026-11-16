@@ -49,7 +49,7 @@ services:
     volumes:
       - ./infrastructure/keycloak/realm-twinfixeno.json:/opt/keycloak/data/import/realm-twinfixeno.json:ro
     ports:
-      - "${KEYCLOAK_PORT:-8081}:8080"
+      - "127.0.0.1:${KEYCLOAK_PORT:-8081}:8080"
     depends_on:
       keycloak-db:
         condition: service_healthy
@@ -68,7 +68,7 @@ services:
     image: hapiproject/hapi:v7.4.0
     restart: unless-stopped
     ports:
-      - "${FHIR_PORT:-8090}:8080"
+      - "127.0.0.1:${FHIR_PORT:-8090}:8080"
     networks: [internal]
 
   fhir-ready:
@@ -106,7 +106,7 @@ services:
       retries: 12
       start_period: 20s
     ports:
-      - "${API_PORT:-8000}:8000"
+      - "127.0.0.1:${API_PORT:-8000}:8000"
     networks: [internal]
 
   web:
@@ -124,7 +124,7 @@ services:
       keycloak-ready:
         condition: service_completed_successfully
     ports:
-      - "${WEB_PORT:-3000}:3000"
+      - "127.0.0.1:${WEB_PORT:-3000}:3000"
     networks: [internal]
 
   apisix:
@@ -134,7 +134,7 @@ services:
       - ./infrastructure/apisix/config.yaml:/usr/local/apisix/conf/config.yaml:ro
       - ./infrastructure/apisix/apisix.yaml:/usr/local/apisix/conf/apisix.yaml:ro
     ports:
-      - "${APISIX_PORT:-9080}:9080"
+      - "127.0.0.1:${APISIX_PORT:-9080}:9080"
     depends_on:
       api:
         condition: service_healthy
