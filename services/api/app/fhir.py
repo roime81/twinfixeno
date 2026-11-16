@@ -83,6 +83,7 @@ def search_resources(resource_type: str, patient_id: str) -> list[dict]:
     url = f"{_base_url()}/{resource_type}"
     params = {"patient": f"Patient/{patient_id}", "_count": "100"}
     results = []
+    completed = False
     for _ in range(20):
         response = requests.get(url, params=params, headers=_headers(), timeout=15)
         response.raise_for_status()
@@ -90,11 +91,14 @@ def search_resources(resource_type: str, patient_id: str) -> list[dict]:
         results.extend(entry["resource"] for entry in bundle.get("entry", []) if entry.get("resource", {}).get("resourceType") == resource_type)
         next_url = next((link.get("url") for link in bundle.get("link", []) if link.get("relation") == "next"), None)
         if not next_url:
+            completed = True
             break
         parsed, base = urlparse(next_url), urlparse(_base_url())
         if parsed.scheme != base.scheme or parsed.netloc != base.netloc or not parsed.path.startswith(base.path + "/"):
             raise ValueError("FHIR pagination link points outside the configured FHIR server")
         url, params = next_url, None
+    if not completed:
+        raise RuntimeError("FHIR search exceeded the 20-page safety limit; import was not completed")
     return results
 
 def sync_patient_resources(db: Session, patient, fhir_patient_id: str) -> dict:
