@@ -6,7 +6,7 @@ The repository now runs as one Docker Compose application stack:
 
 - Next.js 15 / React 19 web application.
 - FastAPI application API.
-- PostgreSQL 16 application database and a separate PostgreSQL identity database for Keycloak.
+- PostgreSQL 16 application database, dedicated Keycloak identity database and persistent PostgreSQL 16 HAPI FHIR database.
 - Keycloak 26 OIDC identity service with browser PKCE.
 - HAPI FHIR R4 server.
 - Apache APISIX API gateway.
