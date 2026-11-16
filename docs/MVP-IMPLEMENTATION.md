@@ -14,7 +14,8 @@ The repository now runs as one Docker Compose application stack:
 Start the synthetic-data environment from the repository root:
 
 ```powershell
-Copy-Item .env.example .env
+if (-not (Test-Path .env)) { Copy-Item .env.example .env }
+docker compose config
 docker compose up --build -d
 docker compose ps
 ```
@@ -29,7 +30,7 @@ The supported local URLs are:
 | Keycloak | http://localhost:8081 |
 | HAPI FHIR metadata | http://localhost:8090/fhir/metadata |
 
-Compose now includes restart policies and readiness checks for PostgreSQL, Keycloak and the API/web containers. HAPI FHIR has a readiness probe; its health command depends on the utility available in the upstream image. The API has `/health` and database-backed `/health/ready` endpoints.
+Compose includes restart policies, persistent PostgreSQL and Keycloak volumes, database health checks, and one-shot curl readiness gates for Keycloak and HAPI FHIR before the API starts. The web workspace waits for the API health check. All host ports bind to `127.0.0.1` for local-only access. The API has `/health` and database-backed `/health/ready` endpoints. Browser-visible API and Keycloak URLs are loaded at runtime from `/runtime-config`, not embedded at image build time.
 
 ## Implemented application capabilities
 
@@ -123,6 +124,7 @@ The API test suite covers patient access isolation, patient permission reporting
 The live HAPI integration test also publishes the six local synthetic observations to a running HAPI FHIR R4 server before exercising resource ingestion. CI now includes:
 - Python API tests plus live HAPI FHIR integration.
 - Next.js production build.
+- Compose graph validation and API/web container image builds.
 
 A passing API test suite does not certify the browser experience, infrastructure security, clinical correctness or production readiness. The new combined CI results must be reviewed for the commit that contains these changes.
 

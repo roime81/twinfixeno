@@ -398,6 +398,8 @@ Do not expose PostgreSQL, Qdrant, object storage, model inference or internal se
 
 ## Running the platform
 
+For a step-by-step Docker Compose quick start, service URLs, demo roles and troubleshooting, see [docs/OPERATIONS.md](docs/OPERATIONS.md). The default Compose profile is for local synthetic data only; see [docs/PRODUCTION-READINESS.md](docs/PRODUCTION-READINESS.md) before considering any real deployment.
+
 ### Local URLs
 
 These are the development endpoints defined by the current `compose.yaml`. Keycloak redirects the browser to sign in; the API's protected routes require the resulting access token.

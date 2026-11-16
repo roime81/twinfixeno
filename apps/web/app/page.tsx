@@ -14,7 +14,6 @@ type Simulation = { id: number; scenario_name: string; formula_id: string; input
 type Permissions = { can_read: boolean; can_write: boolean; can_manage_access: boolean };
 type View = "overview" | "registry" | "timeline" | "simulation" | "copilot" | "snapshots" | "governance";
 
-const API = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:9080";
 const VIEWS: { id: View; label: string; icon: string }[] = [
   { id: "overview", label: "Command centre", icon: "◈" },
   { id: "registry", label: "Patient registry", icon: "◎" },
@@ -37,6 +36,7 @@ function displayPatient(patient?: Patient | null) {
 
 export default function Home() {
   const keycloak = useRef<Keycloak | null>(null);
+  const runtime = useRef({ apiBaseUrl: "http://localhost:8000", keycloakUrl: "http://localhost:8081", keycloakRealm: "twinfixeno", keycloakClientId: "twinfixeno-web" });
   const [authenticated, setAuthenticated] = useState(false);
   const [username, setUsername] = useState("");
   const [roles, setRoles] = useState<string[]>([]);
@@ -76,7 +76,7 @@ export default function Home() {
     const headers = new Headers(init.headers || {});
     headers.set("Authorization", "Bearer " + client.token);
     if (init.body && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
-    const response = await fetch(API + path, { ...init, headers });
+    const response = await fetch(runtime.current.apiBaseUrl.replace(/\/$/, "") + path, { ...init, headers });
     const raw = await response.text();
     let data: any = null;
     try { data = raw ? JSON.parse(raw) : null; } catch { data = raw; }
@@ -130,15 +130,35 @@ export default function Home() {
 
   useEffect(() => {
     let alive = true;
-    const client = new Keycloak({
-      url: process.env.NEXT_PUBLIC_KEYCLOAK_URL || "http://localhost:8081",
-      realm: process.env.NEXT_PUBLIC_KEYCLOAK_REALM || "twinfixeno",
-      clientId: process.env.NEXT_PUBLIC_KEYCLOAK_CLIENT_ID || "twinfixeno-web",
-    });
-    keycloak.current = client;
-    client.init({ onLoad: "login-required", pkceMethod: "S256", checkLoginIframe: false })
-      .then(async authenticatedNow => {
-        if (!alive || !authenticatedNow) return;
+    async function initialise() {
+      try {
+        const response = await fetch("/runtime-config", { cache: "no-store" });
+        if (!response.ok) throw new Error("Unable to load runtime configuration.");
+        const config = await response.json();
+        if (!alive) return;
+        runtime.current = {
+          apiBaseUrl: config.apiBaseUrl || "http://localhost:8000",
+          keycloakUrl: config.keycloakUrl || "http://localhost:8081",
+          keycloakRealm: config.keycloakRealm || "twinfixeno",
+          keycloakClientId: config.keycloakClientId || "twinfixeno-web",
+        };
+        const client = new Keycloak({
+          url: runtime.current.keycloakUrl,
+          realm: runtime.current.keycloakRealm,
+          clientId: runtime.current.keycloakClientId,
+        });
+        keycloak.current = client;
+        const authenticatedNow = await client.init({
+          onLoad: "login-required",
+          pkceMethod: "S256",
+          checkLoginIframe: false,
+        });
+        if (!alive) return;
+        if (!authenticatedNow) {
+          setError("Sign in was not completed. Reload the page to try again.");
+          setLoading(false);
+          return;
+        }
         setAuthenticated(true);
         setUsername(String(client.tokenParsed?.preferred_username || "Signed in"));
         const tokenRoles = (client.tokenParsed as any)?.realm_access?.roles || [];
@@ -157,10 +177,14 @@ export default function Home() {
         } else {
           setLoading(false);
         }
-      })
-      .catch((err: any) => {
-        if (alive) { setError(err?.message || "Authentication or API connection failed."); setLoading(false); }
-      });
+      } catch (err: any) {
+        if (alive) {
+          setError(err?.message || "Authentication or API connection failed.");
+          setLoading(false);
+        }
+      }
+    }
+    void initialise();
     return () => { alive = false; };
     // Authentication is deliberately initialised once per browser session.
     // eslint-disable-next-line react-hooks/exhaustive-deps
