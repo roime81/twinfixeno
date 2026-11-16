@@ -94,6 +94,9 @@ services:
       SPRING_JPA_HIBERNATE_DDL_AUTO: update
       SPRING_JPA_PROPERTIES_HIBERNATE_HBM2DDL_AUTO: update
       SPRING_JPA_PROPERTIES_HIBERNATE_SEARCH_ENABLED: "false"
+      SPRING_CONFIG_ADDITIONAL_LOCATION: file:/app/config/
+    volumes:
+      - ./infrastructure/fhir/application.yaml:/app/config/application.yaml:ro
     depends_on:
       fhir-db:
         condition: service_healthy
