@@ -13,6 +13,7 @@ The repository now runs as one Docker Compose application stack:
 - Ollama local inference (Qwen 2.5 3B chat model and nomic-embed-text embedding model).
 - Qdrant patient-scoped vector store.
 - MCP Streamable HTTP server with three bearer-token-forwarding tools.
+- Prometheus metrics collector, Grafana dashboard and Jaeger OTLP trace viewer.
 
 Start the synthetic-data environment from the repository root:
 
@@ -32,6 +33,9 @@ The browser UI sends API traffic through APISIX at port 9080. The direct FastAPI
 | APISIX gateway | http://localhost:9080 |
 | Keycloak | http://localhost:8081 |
 | HAPI FHIR metadata | http://localhost:8090/fhir/metadata |
+| Prometheus | http://localhost:9090 |
+| Grafana | http://localhost:3001 |
+| Jaeger | http://localhost:16686 |
 
 Compose includes restart policies, separate persistent PostgreSQL databases for the application and Keycloak, database health checks, and one-shot curl readiness gates for Keycloak and HAPI FHIR before the API starts. The API image includes Alembic configuration and migrations, applies `alembic upgrade head` before starting, and seeds a synthetic patient only when `SEED_DEMO_DATA=true`. The local example defaults to `true`; set it to `false` when building a non-demo environment. The web workspace waits for the API health check and APISIX. All host ports bind to `127.0.0.1` for local-only access. The API has `/health` and database-backed `/health/ready` endpoints. Browser-visible API and Keycloak URLs are loaded at runtime from `/runtime-config`, not embedded at image build time.
 
@@ -167,7 +171,7 @@ The following work is not represented as complete:
 - Broader FHIR coverage such as MedicationRequest, DiagnosticReport, CarePlan, DocumentReference and AllergyIntolerance.
 - Clinically validated simulation models, review workflow and model version governance.
 - Production model/prompt/tool version governance, evaluation, prompt-injection defence and full AI traceability (local synthetic RAG and a limited authenticated MCP service are implemented).
-- Dedicated observability stack: OpenTelemetry collector, Prometheus, Grafana, centralised logs, dashboards and alerting.
+- Central log aggregation/retention, SIEM forwarding and alert notification routing (Prometheus, Grafana metrics dashboards and Jaeger OTLP traces are implemented).
 - Security review, threat modelling, penetration testing, disaster recovery exercise and clinical safety/regulatory assessment.
 - Full browser E2E tests across login, registry, FHIR sync, snapshot, scenario and governance flows.
 - SBOM, formal dependency update policy, vulnerability scanning and licence review.
