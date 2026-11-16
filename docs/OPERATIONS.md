@@ -25,6 +25,9 @@ The first run downloads the images and builds the web/API containers. The Compos
 | APISIX gateway | http://localhost:9080 |
 | Keycloak | http://localhost:8081 |
 | HAPI FHIR capability statement | http://localhost:8090/fhir/metadata |
+| Local Ollama API | http://localhost:11434 |
+| Qdrant dashboard | http://localhost:6333/dashboard |
+| MCP Streamable HTTP | http://localhost:8001/mcp |
 
 All host port bindings are restricted to loopback (127.0.0.1). The browser loads API and Keycloak addresses from the Next.js /runtime-config route, so WEB_API_BASE_URL and WEB_KEYCLOAK_URL in .env are read when the container starts, not baked into the JavaScript bundle.
 
@@ -58,10 +61,12 @@ The application and Keycloak identity stores run in separate PostgreSQL services
 - FHIR-backed clinical timeline with source identity, version and timestamp.
 - Immutable snapshot history, artifact/provenance inspection and SHA-256 verification.
 - Persisted percentage-delta simulation runs, explicitly labelled hypothetical.
-- Local deterministic evidence/context report (not an LLM).
+- Local Ollama LLM, nomic-embed-text embeddings and patient-filtered Qdrant RAG.
+- MCP Streamable HTTP tools forwarding caller Keycloak tokens; API patient grants remain enforced.
+- Deterministic context report retained as a fallback.
 - Administrator patient access grants and application audit-event review.
 
-The private LLM/RAG, MCP server, clinically validated physiology simulator and enterprise observability stack are not implemented in this release. They are not displayed or described as working AI services.
+The clinically validated physiology simulator and enterprise observability stack are not implemented in this release. They are not displayed or described as working AI services.
 
 ## Production deployment status
 
@@ -70,3 +75,11 @@ This Compose profile is a local synthetic-data development/review environment. I
 At minimum, production requires production-mode identity and MFA, TLS, managed secrets, network segmentation, supported persistent FHIR deployment, database migrations, backup/restore and HA, consent/purpose-of-use/care-team controls, independent audit retention, security testing, monitoring, clinical safety validation and relevant regulatory/privacy approvals.
 
 Never load identifiable patient data into this local demo stack.
+
+## Local LLM, RAG and MCP
+
+Compose starts Ollama, downloads `nomic-embed-text` and `llama3.2:3b` into the persistent model volume, starts Qdrant with persistent vector storage, and starts the MCP Streamable HTTP server. First startup downloads several GB and can take several minutes.
+
+After login, check `GET /api/v1/ai/status`; index a patient using `POST /api/v1/patients/{id}/rag/index` (write grant required), then query `POST /api/v1/patients/{id}/rag/query` with `{"question":"Summarise the recorded observations","top_k":5}`. Results include source records and SHA-256 hashes. MCP URL: `http://localhost:8001/mcp`; tools: `get_patient_timeline`, `index_patient_evidence`, `ask_patient_evidence`. MCP forwards the caller's bearer token to the API, so normal Keycloak roles and patient grants apply.
+
+RAG retrieval is filtered by patient ID. The model is instructed to answer only from retrieved records and not diagnose or recommend treatment. Synthetic data only; not clinical decision support.

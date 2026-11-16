@@ -19,7 +19,7 @@ from .access import get_accessible_patient, require_role, READ_ROLES, WRITE_ROLE
 from .snapshots import create_immutable_snapshot, sha256_json
 from .timeline import timeline_item
 from .audit import write_audit
-from . import fhir
+from . import fhir, rag
 
 Base.metadata.create_all(bind=engine)
 if engine.dialect.name == "postgresql":
@@ -413,3 +413,32 @@ def get_patient_fhir(patient_id: int, db: Session = Depends(get_db), user=Depend
         return fhir.find_patient(patient.external_id)
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"FHIR server query failed: {exc}") from exc
+
+
+class RagQuestion(BaseModel):
+    question: str = Field(min_length=3, max_length=2000)
+    top_k: int = Field(default=5, ge=1, le=12)
+
+@app.get('/api/v1/ai/status')
+def ai_status(user=Depends(get_current_user)):
+    return rag.ai_status()
+
+@app.post('/api/v1/patients/{patient_id}/rag/index')
+def rag_index(patient_id: int, request: Request, db: Session = Depends(get_db), user=Depends(get_current_user)):
+    get_accessible_patient(db, patient_id, user, write=True)
+    try:
+        result = rag.index_patient(db, patient_id)
+        audit(db, user, 'patient.rag.index', request, patient_id=patient_id, details=result)
+        return result
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f'RAG indexing failed: {exc}') from exc
+
+@app.post('/api/v1/patients/{patient_id}/rag/query')
+def rag_query(patient_id: int, question: RagQuestion, request: Request, db: Session = Depends(get_db), user=Depends(get_current_user)):
+    get_accessible_patient(db, patient_id, user)
+    try:
+        result = rag.answer_patient(db, patient_id, question.question, question.top_k)
+        audit(db, user, 'patient.rag.query', request, patient_id=patient_id, details={'retrieved_chunks': len(result.get('sources', []))})
+        return result
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f'RAG query failed: {exc}') from exc
