@@ -31,6 +31,8 @@ The API container runs `alembic upgrade head` before serving requests; the initi
 
 All host port bindings are restricted to loopback (127.0.0.1). The browser loads API and Keycloak addresses from the Next.js /runtime-config route, so WEB_API_BASE_URL and WEB_KEYCLOAK_URL in .env are read when the container starts, not baked into the JavaScript bundle.
 
+The local example enables username matching only for the seeded demo identities via `ALLOW_USERNAME_PATIENT_GRANTS=true`. In a shared/production environment set it to `false` and create grants using the immutable Keycloak subject ID. The API defaults to subject-only matching when this variable is absent.
+
 ## Demo identities
 
 Use the demo administrator when testing all administrator-only screens and actions:
