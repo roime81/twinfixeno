@@ -4,7 +4,7 @@
 
 twinfixeno is an early-stage, design-driven MVP for creating a longitudinal digital representation of a patient's health journey. It brings together interoperable clinical data, versioned patient-state snapshots, explainable analytics, hypothetical scenario exploration, private local language models and governed Model Context Protocol (MCP) tools.
 
-> **Project status:** Product specification / repository bootstrap. The README defines the intended MVP. The application services and `compose.yaml` are not yet present in this initial repository commit; the run commands below describe the planned development workflow and will become executable as the scaffold is implemented.
+> **Project status:** Early MVP implementation. The repository includes a runnable Next.js + FastAPI + PostgreSQL + APISIX foundation. Authentication, FHIR integration, simulation, AI/MCP and full observability remain planned.
 
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![Status](https://img.shields.io/badge/status-MVP%20in%20development-orange.svg)](#roadmap)
@@ -278,7 +278,7 @@ twinfixeno/
     └── workflows/
 ```
 
-The repository will be populated incrementally. A directory listed here is a target location, not a claim that its implementation already exists.
+The repository is populated incrementally. See [MVP implementation status](docs/MVP-IMPLEMENTATION.md) for implemented and planned components.
 
 ## Prerequisites
 
@@ -365,7 +365,7 @@ docker compose exec api alembic upgrade head
 
 Synthetic demo data will be loaded through a dedicated seed command once the seed utility is implemented.
 
-> **Bootstrap note:** This initial repository commit contains the project README only. The commands in this section are the target workflow; they cannot run until the corresponding Compose, Dockerfile, application and migration files have been committed.
+> **Current status:** The Docker Compose foundation is committed. Keycloak, HAPI FHIR, migrations, simulation and AI services are not yet included; consult `docs/MVP-IMPLEMENTATION.md`.
 
 ## Configuration
 
@@ -392,7 +392,7 @@ Do not expose PostgreSQL, Qdrant, object storage, model inference or internal se
 
 ### Planned local URLs
 
-The final ports will be defined in `compose.yaml`. The following are proposed development defaults, not currently active endpoints.
+These are the development endpoints defined by the current `compose.yaml`.
 
 | Component | Proposed URL |
 |---|---|
@@ -652,12 +652,13 @@ Clinical correctness cannot be established by software tests alone. Domain exper
 - [ ] Design tokens and application shell
 
 ### Milestone 1 — Platform foundation
-- [ ] Next.js application
-- [ ] FastAPI service
-- [ ] PostgreSQL and migrations
+- [x] Next.js application shell
+- [x] FastAPI service
+- [x] PostgreSQL persistence
+- [ ] Formal database migrations
 - [ ] Keycloak authentication
-- [ ] APISIX gateway
-- [ ] Docker Compose development environment
+- [x] APISIX gateway
+- [x] Docker Compose development environment
 
 ### Milestone 2 — Patient and twin
 - [ ] Synthetic patient registry
