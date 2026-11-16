@@ -1,4 +1,4 @@
-# twinfixeno
+# TWINFixeno
 
 **An open-source, privacy-first healthcare Digital Twin platform.**
 
