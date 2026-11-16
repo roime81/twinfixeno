@@ -4,7 +4,7 @@
 
 TWINFixeno is an early-stage, design-driven MVP for creating a longitudinal digital representation of a patient's health journey. It brings together interoperable clinical data, versioned patient-state snapshots, explainable analytics, hypothetical scenario exploration, private local language models and governed Model Context Protocol (MCP) tools.
 
-> **Project status:** MVP foundation now includes Keycloak OIDC, patient-level access grants, HAPI FHIR Patient synchronisation, Observation/Condition/Encounter ingestion, FHIR-backed timeline, immutable snapshot artifacts with SHA-256 provenance, and an automated API test suite. Hosted CI must pass before this milestone is considered verified.
+> **Project status:** MVP foundation now includes Keycloak OIDC, patient-level access grants, HAPI FHIR Patient synchronisation, Observation/Condition/Encounter ingestion, FHIR-backed timeline, immutable snapshot artifacts with SHA-256 provenance, and automated API tests. GitHub Actions has passed 12 tests, including a live HAPI FHIR R4 ingestion test.
 
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![Status](https://img.shields.io/badge/status-MVP%20in%20development-orange.svg)](#roadmap)
@@ -649,7 +649,7 @@ A production healthcare deployment requires a formal threat model, penetration t
 
 ## Testing and quality
 
-The current API test suite uses Pytest and FastAPI TestClient to exercise patient access isolation, researcher read-only enforcement, administrator grant management, FHIR ingestion and patient-reference filtering, timeline ordering, snapshot hashes and immutability. GitHub Actions runs these tests on pushes and pull requests. Run locally from `services/api` with `pip install -r requirements.txt` followed by `pytest -q`. The broader planned quality strategy includes:
+The current API test suite uses Pytest and FastAPI TestClient to exercise patient access isolation, researcher read-only enforcement, administrator grant management, FHIR ingestion and patient-reference filtering, timeline ordering, snapshot hashes and immutability. GitHub Actions starts a real HAPI FHIR R4 container and runs the live Patient/Observation/Condition/Encounter ingestion test as well. Latest CI run: **12 passed** ([run #14](https://github.com/roime81/twinfixeno/actions/runs/43806365853)). Run locally from `services/api` with `pip install -r requirements.txt` followed by `pytest -q`; the live HAPI test is skipped unless `FHIR_INTEGRATION_TESTS=1` and `FHIR_BASE_URL` point to a running server. The broader planned quality strategy includes:
 
 | Test type | Coverage |
 |---|---|
