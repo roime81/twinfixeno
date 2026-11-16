@@ -682,7 +682,7 @@ Expected contribution practices:
 6. Preserve auditability and patient-level access controls.
 7. Never describe an unvalidated feature as clinically safe or effective.
 
-Contribution guidelines and a code of conduct will be added as the project matures.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the development workflow and [SECURITY.md](SECURITY.md) for vulnerability reporting and sensitive-data handling.
 
 ## Licence
 
