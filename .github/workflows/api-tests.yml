@@ -57,7 +57,11 @@ jobs:
           PYTHONPATH: ${{ github.workspace }}/services/api
           FHIR_BASE_URL: http://localhost:8090/fhir
           FHIR_INTEGRATION_TESTS: "1"
-        run: pytest -q
+        run: |
+          alembic upgrade head
+          alembic downgrade base
+          alembic upgrade head
+          pytest -q
 
   web-build:
     runs-on: ubuntu-latest
