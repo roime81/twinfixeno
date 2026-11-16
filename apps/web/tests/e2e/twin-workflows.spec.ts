@@ -3,11 +3,15 @@ import { expect, test } from "@playwright/test";
 const initialPassword = "Demo-Only-Change-Me-2026!";
 const replacementPassword = process.env.PW_E2E_PASSWORD || "E2E-Only-Change-Me-2026!";
 
-async function signInAsDemoClinician(page: import("@playwright/test").Page) {
+async function signInAsDemoUser(
+  page: import("@playwright/test").Page,
+  username: string,
+  password = initialPassword,
+) {
   await page.goto("/");
   await expect(page).toHaveURL(/localhost:8081/);
-  await page.locator('input[name="username"]').fill("demo.clinician");
-  await page.locator('input[name="password"]').fill(initialPassword);
+  await page.locator('input[name="username"]').fill(username);
+  await page.locator('input[name="password"]').fill(password);
   await page.getByRole("button", { name: /sign in/i }).click();
 
   // Keycloak marks only the local seeded demo credentials as temporary.
@@ -29,7 +33,7 @@ test("clinician can use the patient twin workflows and is kept out of admin gove
   const pageErrors: string[] = [];
   page.on("pageerror", (error) => pageErrors.push(error.message));
 
-  await signInAsDemoClinician(page);
+  await signInAsDemoUser(page, "demo.clinician");
   await expect(page.getByText("Alex Morgan")).toBeVisible();
   await expect(page.getByRole("button", { name: "Governance & audit" })).toHaveCount(0);
 
@@ -65,4 +69,26 @@ test("clinician can use the patient twin workflows and is kept out of admin gove
   await expect(page.getByText(/Answer SHA-256/)).toBeVisible();
 
   expect(pageErrors, "browser should not report uncaught JavaScript errors").toEqual([]);
+});
+
+
+test("administrator can manage patient access grants and review audit events", async ({ page }) => {
+  await signInAsDemoUser(
+    page,
+    "demo.admin",
+    "Demo-Admin-Change-Me-2026!",
+  );
+  await expect(page.getByRole("button", { name: "Governance & audit" })).toBeVisible();
+  await page.getByRole("button", { name: "Governance & audit" }).click();
+  await expect(page.getByRole("heading", { name: "Patient access grants" })).toBeVisible();
+
+  await page.getByLabel("Keycloak username").fill("qa.clinician");
+  await page.getByLabel("Access level").selectOption("write");
+  await page.getByRole("button", { name: "Save grant" }).click();
+  await expect(page.getByText("Patient access grant saved.")).toBeVisible();
+  await expect(page.getByText("qa.clinician")).toBeVisible();
+
+  await page.getByRole("button", { name: "Revoke" }).last().click();
+  await expect(page.getByText("Access grant revoked.")).toBeVisible();
+  await expect(page.getByText("Recent audit activity")).toBeVisible();
 });
