@@ -13,7 +13,7 @@ docker compose up --build -d
 docker compose ps
 \`\`\`
 
-The first run downloads the images and builds the web/API/MCP containers. The Compose dependency graph waits for PostgreSQL, Keycloak and HAPI FHIR readiness, then pulls the Ollama chat and embedding models before starting the API and web workspace. The first model download can take several minutes and requires several GB of network transfer and disk space. The browser sends API traffic through APISIX on port 9080; FastAPI port 8000 is retained for OpenAPI and diagnostics.
+The API container runs `alembic upgrade head` before serving requests; the current baseline safely adopts an existing MVP schema and installs PostgreSQL immutability triggers. `SEED_DEMO_DATA=true` loads only the synthetic demonstration patient and grants. Set it to `false` to skip demo data in a non-demo environment. The first run downloads the images and builds the web/API/MCP containers. The Compose dependency graph waits for PostgreSQL, Keycloak and HAPI FHIR readiness, then pulls the Ollama chat and embedding models before starting the API and web workspace. The first model download can take several minutes and requires several GB of network transfer and disk space. The browser sends API traffic through APISIX on port 9080; FastAPI port 8000 is retained for OpenAPI and diagnostics.
 
 ## Local URLs
 
