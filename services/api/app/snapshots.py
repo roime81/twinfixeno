@@ -29,15 +29,23 @@ def build_snapshot_payload(db: Session, patient_id: int) -> tuple[dict, dict]:
             "resource": item.resource_json
         } for item in resources]
     }
+    observation_sources = [
+        {"system": "twinfixeno-postgres", "type": "Observation", "id": str(item.id),
+         "code": item.code, "observed_at": item.observed_at.isoformat(),
+         "content_sha256": sha256_json({"code": item.code, "display": item.display, "value": item.value,
+                                         "unit": item.unit, "observed_at": item.observed_at.isoformat()})}
+        for item in observations
+    ]
+    fhir_sources = [
+        {"system": item.source_system, "type": item.resource_type, "id": item.fhir_id,
+         "version_id": item.version_id, "last_updated": item.last_updated.isoformat() if item.last_updated else None,
+         "content_sha256": item.content_sha256}
+        for item in resources
+    ]
     provenance = {
         "captured_at": payload["captured_at"],
-        "source_systems": sorted({"twinfixeno-postgres"} | ({"hapi-fhir"} if resources else set())),
-        "sources": [
-            {"type": item.resource_type, "id": item.fhir_id, "version_id": item.version_id,
-             "last_updated": item.last_updated.isoformat() if item.last_updated else None,
-             "content_sha256": item.content_sha256}
-            for item in resources
-        ],
+        "source_systems": sorted({"twinfixeno-postgres"} | ({item.source_system for item in resources})),
+        "sources": observation_sources + fhir_sources,
         "observation_count": len(observations),
         "fhir_resource_count": len(resources)
     }
