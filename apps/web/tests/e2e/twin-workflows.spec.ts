@@ -91,3 +91,26 @@ test("administrator can manage patient access grants and review audit events", a
   await expect(page.getByText("Access grant revoked.")).toBeVisible();
   await expect(page.getByText("Recent audit activity")).toBeVisible();
 });
+
+
+test("researcher receives read-only controls in the clinical workspace", async ({ page }) => {
+  await signInAsDemoUser(
+    page,
+    "demo.researcher",
+    "Demo-Research-Change-Me-2026!",
+  );
+  await expect(page.getByText("Alex Morgan")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Governance & audit" })).toHaveCount(0);
+
+  await expect(page.getByRole("button", { name: "Sync FHIR" })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Create snapshot" })).toBeDisabled();
+
+  await page.getByRole("button", { name: "Simulation studio" }).click();
+  await expect(page.getByRole("button", { name: "Save scenario run" })).toBeDisabled();
+
+  await page.getByRole("button", { name: "Twin snapshots" }).click();
+  await expect(page.getByRole("button", { name: "Create new version" })).toBeDisabled();
+
+  await page.getByRole("button", { name: "Evidence assistant" }).click();
+  await expect(page.getByRole("button", { name: "Index this patient's records" })).toBeDisabled();
+});
