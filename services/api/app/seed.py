@@ -1,10 +1,9 @@
 from datetime import date, datetime, timedelta, timezone
 from sqlalchemy import select
-from .database import Base, SessionLocal, engine
+from .database import SessionLocal
 from .models import Patient, Observation, PatientAccessGrant
 
 def seed():
-    Base.metadata.create_all(bind=engine)
     with SessionLocal() as db:
         patient = db.scalar(select(Patient).where(Patient.external_id == "SYN-0001"))
         if patient is None:
