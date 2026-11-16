@@ -13,7 +13,7 @@ docker compose up --build -d
 docker compose ps
 \`\`\`
 
-The first run downloads the images and builds the web/API containers. The Compose dependency graph waits for PostgreSQL, Keycloak and HAPI FHIR readiness before the API is started, then waits for API readiness before starting the web workspace.
+The first run downloads the images and builds the web/API/MCP containers. The Compose dependency graph waits for PostgreSQL, Keycloak and HAPI FHIR readiness, then pulls the Ollama chat and embedding models before starting the API and web workspace. The first model download can take several minutes and requires several GB of network transfer and disk space. The browser sends API traffic through APISIX on port 9080; FastAPI port 8000 is retained for OpenAPI and diagnostics.
 
 ## Local URLs
 
@@ -39,6 +39,15 @@ The development realm includes:
 - demo.researcher — read-only access to the seeded synthetic patient.
 
 Keycloak forces a password change at first login. These demo identities and bootstrap credentials are for local development only.
+
+## Demo identities
+
+Use the demo administrator when testing all administrator-only screens and actions:
+- `demo.admin` — `Demo-Admin-Change-Me-2026!` (platform-wide synthetic-patient access and grant management)
+- `demo.clinician` — `Demo-Only-Change-Me-2026!` (write access to SYN-0001)
+- `demo.researcher` — `Demo-Research-Change-Me-2026!` (read-only access to SYN-0001)
+
+Keycloak forces a password change at first login. These credentials are public development fixtures, never use them outside the local demo environment. Sign out before switching roles.
 
 ## Useful commands
 
@@ -66,7 +75,7 @@ The application and Keycloak identity stores run in separate PostgreSQL services
 - Deterministic context report retained as a fallback.
 - Administrator patient access grants and application audit-event review.
 
-The clinically validated physiology simulator and enterprise observability stack are not implemented in this release. They are not displayed or described as working AI services.
+The current percentage-delta scenario is arithmetic only, not a physiology simulator. Distributed tracing, enterprise observability, model/prompt/tool version governance and clinical AI evaluation are not implemented.
 
 ## Production deployment status
 
@@ -83,3 +92,15 @@ Compose starts Ollama, downloads `nomic-embed-text` and `qwen2.5:3b` into the pe
 After login, check `GET /api/v1/ai/status`; index a patient using `POST /api/v1/patients/{id}/rag/index` (write grant required), then query `POST /api/v1/patients/{id}/rag/query` with `{"question":"Summarise the recorded observations","top_k":5}`. Results include source records and SHA-256 hashes. MCP URL: `http://localhost:8001/mcp`; tools: `get_patient_timeline`, `index_patient_evidence`, `ask_patient_evidence`. MCP forwards the caller's bearer token to the API, so normal Keycloak roles and patient grants apply.
 
 RAG retrieval is filtered by patient ID. The model is instructed to answer only from retrieved records and not diagnose or recommend treatment. Synthetic data only; not clinical decision support.
+
+
+## Troubleshooting
+
+- **`docker` is not recognized:** install Docker Desktop, restart PowerShell and verify `docker compose version`.
+- **Docker daemon unavailable:** start Docker Desktop and wait for the engine to report running.
+- **Web/API starts late or is unhealthy:** run `docker compose ps` and `docker compose logs --tail 200 ollama-models api web`. API and web depend on the Ollama model-pull job completing.
+- **Evidence Assistant reports AI unavailable:** inspect `docker compose logs ollama ollama-models qdrant api`; wait for both model downloads to complete, then reload the workspace and use Check local AI status.
+- **Keycloak login loops or token rejected:** use the local Keycloak URL from this same browser host and confirm the configured issuer is `http://localhost:8081/realms/twinfixeno`.
+- **Gateway API calls fail:** test `http://localhost:9080/health` and verify `docker compose logs apisix`. The web app uses APISIX, not the direct API port.
+
+After changing code or Compose configuration, rebuild with `docker compose up --build -d`. Preserve named volumes with `docker compose down`; do not add `-v` unless intentionally deleting local data.
