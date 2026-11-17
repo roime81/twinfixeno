@@ -63,7 +63,7 @@ test("clinician can use the patient twin workflows and is kept out of admin gove
     .getByLabel("Ask about the recorded evidence")
     .fill("Summarise the patient's recorded heart rate and cite the source.");
   await page.getByRole("button", { name: "Ask local evidence assistant" }).click();
-  await expect(page.getByRole("heading", { name: /Answer · qwen2\.5:3b/ })).toBeVisible({
+  await expect(page.getByRole("heading", { name: /^Answer · (?:[\w-]+\/)?qwen2\.5:3b$/ })).toBeVisible({
     timeout: 240_000,
   });
   await expect(page.getByText(/Prompt twinfixeno-evidence-assistant v1\.0\.0/)).toBeVisible();
