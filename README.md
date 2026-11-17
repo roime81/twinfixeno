@@ -144,7 +144,9 @@ flowchart TB
     API --> PG[(PostgreSQL)]
     API --> FHIR[HAPI FHIR R4]
     API --> VDB[(Qdrant)]
-    API --> LLM[Ollama: Qwen 2.5 3B]
+    API --> LLM[LiteLLM provider adapter]
+    LLM --> LOCAL[Ollama: Qwen 2.5 3B by default]
+    LLM -. optional .-> EXT[External LLM providers]
     API --> EMB[Ollama: nomic-embed-text]
     MCP[MCP Streamable HTTP] -->|Forwards caller bearer token| API
     API --> AUDIT[Application Audit Events]
@@ -189,8 +191,10 @@ The table distinguishes components actually present in the current Compose stack
 | FHIR database | PostgreSQL 16 | Persistent HAPI FHIR R4 clinical resources |
 | Healthcare interoperability | HAPI FHIR 7.4, FHIR R4 | Patient upsert, Observation publication and Observation/Condition/Encounter import |
 | API gateway | Apache APISIX 3.9.1 | Browser API routing to FastAPI |
-| Local inference | Ollama 0.6.8 | Local chat and embeddings |
-| Chat model | Qwen 2.5 3B | Local evidence-answer generation; synthetic-data use only |
+| LLM adapter | LiteLLM (pinned in API requirements) | Provider-neutral chat completion interface; configuration-driven |
+| Local inference | Ollama 0.6.8 | Default local chat provider and local embeddings |
+| Default chat model | Qwen 2.5 3B | Local evidence-answer generation; synthetic-data use only |
+| Optional chat providers | LiteLLM provider integrations | OpenAI, Anthropic, Google Gemini and OpenAI-compatible endpoints; disabled unless configured |
 | Embeddings | nomic-embed-text | Local embedding generation |
 | Vector store | Qdrant 1.13.2 | Patient-filtered retrieval |
 | Tool protocol | Python MCP SDK / FastMCP | Timeline, evidence indexing and evidence query tools |
@@ -422,10 +426,10 @@ FHIR resources are matched to the FHIR Patient reference before they are stored.
 
 Chat generation now uses LiteLLM as a provider abstraction while retaining local Ollama/Qwen as the default. Ollama remains responsible for `nomic-embed-text` embeddings, and Qdrant patient-filtered retrieval is unchanged. External providers can be enabled through server-side environment configuration; see [LLM provider configuration](docs/LLM-PROVIDERS.md). No UI, API route, MCP tool or orchestration redesign is included.
 
-The bundled Compose profile starts Ollama and downloads the configured chat model (`qwen2.5:3b`) and embedding model (`nomic-embed-text`). Qdrant stores patient-scoped evidence vectors. In the Evidence Assistant screen:
+The bundled Compose profile starts Ollama and downloads the configured local chat model (`qwen2.5:3b`) and embedding model (`nomic-embed-text`). LiteLLM provides the chat abstraction and defaults to local Ollama/Qwen; an external provider is used only when explicitly configured in server-side environment variables. Ollama remains required for embeddings. Qdrant stores patient-scoped evidence vectors. In the Evidence Assistant screen:
 
 1. Open **Check local AI status** (the page also checks automatically when opened).
-2. Wait for both models and Qdrant to report ready.
+2. Wait for the configured chat provider, local embedding model and Qdrant to report ready.
 3. Select **Index this patient's records** using a write-authorised account.
 4. Ask a question about those indexed records. The response includes retrieved source references and hashes.
 5. Use the deterministic context report as a non-LLM fallback.
