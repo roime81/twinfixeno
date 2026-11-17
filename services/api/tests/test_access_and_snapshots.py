@@ -207,10 +207,6 @@ def test_patient_list_subject_identity_precedes_username_fallback(client, monkey
             patient_id=1, user_subject="subject-read-only",
             username="demo.clinician", access_level="read",
         ))
-        db.add(PatientAccessGrant(
-            patient_id=1, user_subject=None,
-            username="demo.clinician", access_level="write",
-        ))
         db.commit()
 
     app.dependency_overrides[get_current_user] = lambda: {

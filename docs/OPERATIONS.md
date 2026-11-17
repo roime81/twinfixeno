@@ -50,7 +50,7 @@ Keycloak forces a password change at first login. These credentials are public d
 The application database is the `postgres` Compose service. Verify the loaded records with:
 
 ```powershell
-docker compose exec postgres sh -lc 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "SELECT COUNT(*) AS patients FROM patients WHERE external_id LIKE ''SYN-%'';"'
+docker compose exec postgres sh -lc 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "SELECT COUNT(*) AS patients FROM patients WHERE left(external_id,4)=chr(83)||chr(89)||chr(78)||chr(45);"'
 docker compose exec postgres sh -lc 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "SELECT COUNT(*) AS observations FROM observations;"'
 ```
 
