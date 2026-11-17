@@ -4,7 +4,7 @@
 
 TWINFixeno is an early-stage, design-driven MVP for creating a longitudinal digital representation of a patient's health journey. It brings together interoperable clinical data, versioned patient-state snapshots, explainable analytics, hypothetical scenario exploration, private local language models and governed Model Context Protocol (MCP) tools.
 
-> **Project status:** Integrated synthetic-data development MVP. The web workspace provides a searchable, paginated patient registry, timeline, illustrative simulation, snapshot inspection, governance and a local Evidence Assistant. The local demo seed creates 10,000 synthetic patients with six observations each (approximately 60,000 observation rows) in the application PostgreSQL database. The AI path uses Ollama (Qwen 2.5 3B), `nomic-embed-text` embeddings and patient-filtered Qdrant retrieval; MCP exposes three authenticated, API-authorised tools. This is still a synthetic-data engineering environment, not a validated clinical product or production deployment. See [Production readiness assessment](docs/PRODUCTION-READINESS.md).
+> **Project status:** Integrated synthetic-data development MVP. The web workspace provides a searchable, paginated patient registry, timeline, illustrative simulation, snapshot inspection, governance and a local Evidence Assistant. The local demo seed creates 10,000 synthetic patients with six observations each (approximately 60,000 observation rows) in the application PostgreSQL database. The AI path uses LiteLLM with local Ollama/Qwen 2.5 3B as the default chat provider, `nomic-embed-text` embeddings and patient-filtered Qdrant retrieval; MCP exposes three authenticated, API-authorised tools. This is still a synthetic-data engineering environment, not a validated clinical product or production deployment. See [Production readiness assessment](docs/PRODUCTION-READINESS.md).
 
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![Status](https://img.shields.io/badge/status-MVP%20in%20development-orange.svg)](#roadmap)
@@ -144,7 +144,9 @@ flowchart TB
     API --> PG[(PostgreSQL)]
     API --> FHIR[HAPI FHIR R4]
     API --> VDB[(Qdrant)]
-    API --> LLM[Ollama: Qwen 2.5 3B]
+    API --> LLM[LiteLLM provider adapter]
+    LLM --> LOCAL[Ollama: Qwen 2.5 3B by default]
+    LLM -. optional .-> EXT[External LLM providers]
     API --> EMB[Ollama: nomic-embed-text]
     MCP[MCP Streamable HTTP] -->|Forwards caller bearer token| API
     API --> AUDIT[Application Audit Events]
@@ -189,8 +191,10 @@ The table distinguishes components actually present in the current Compose stack
 | FHIR database | PostgreSQL 16 | Persistent HAPI FHIR R4 clinical resources |
 | Healthcare interoperability | HAPI FHIR 7.4, FHIR R4 | Patient upsert, Observation publication and Observation/Condition/Encounter import |
 | API gateway | Apache APISIX 3.9.1 | Browser API routing to FastAPI |
-| Local inference | Ollama 0.6.8 | Local chat and embeddings |
-| Chat model | Qwen 2.5 3B | Local evidence-answer generation; synthetic-data use only |
+| LLM adapter | LiteLLM (pinned in API requirements) | Provider-neutral chat completion interface; configuration-driven |
+| Local inference | Ollama 0.6.8 | Default local chat provider and local embeddings |
+| Default chat model | Qwen 2.5 3B | Local evidence-answer generation; synthetic-data use only |
+| Optional chat providers | LiteLLM provider integrations | OpenAI, Anthropic, Google Gemini and OpenAI-compatible endpoints; disabled unless configured |
 | Embeddings | nomic-embed-text | Local embedding generation |
 | Vector store | Qdrant 1.13.2 | Patient-filtered retrieval |
 | Tool protocol | Python MCP SDK / FastMCP | Timeline, evidence indexing and evidence query tools |
@@ -420,10 +424,12 @@ FHIR resources are matched to the FHIR Patient reference before they are stored.
 
 ### Local AI and RAG
 
-The bundled Compose profile starts Ollama and downloads the configured chat model (`qwen2.5:3b`) and embedding model (`nomic-embed-text`). Qdrant stores patient-scoped evidence vectors. In the Evidence Assistant screen:
+Chat generation now uses LiteLLM as a provider abstraction while retaining local Ollama/Qwen as the default. Ollama remains responsible for `nomic-embed-text` embeddings, and Qdrant patient-filtered retrieval is unchanged. External providers can be enabled through server-side environment configuration; see [LLM provider configuration](docs/LLM-PROVIDERS.md). No UI, API route, MCP tool or orchestration redesign is included.
+
+The bundled Compose profile starts Ollama and downloads the configured local chat model (`qwen2.5:3b`) and embedding model (`nomic-embed-text`). LiteLLM provides the chat abstraction and defaults to local Ollama/Qwen; an external provider is used only when explicitly configured in server-side environment variables. Ollama remains required for embeddings. Qdrant stores patient-scoped evidence vectors. In the Evidence Assistant screen:
 
 1. Open **Check local AI status** (the page also checks automatically when opened).
-2. Wait for both models and Qdrant to report ready.
+2. Wait for the configured chat provider, local embedding model and Qdrant to report ready.
 3. Select **Index this patient's records** using a write-authorised account.
 4. Ask a question about those indexed records. The response includes retrieved source references and hashes.
 5. Use the deterministic context report as a non-LLM fallback.
@@ -602,7 +608,7 @@ Security controls are foundational, even in the MVP.
 - Restricted internal service networking.
 - Append-only or tamper-evident audit design.
 - Prompt, model, retrieval and tool-call traceability.
-- No external LLM API in the default architecture.
+- LiteLLM is the provider abstraction; local Ollama/Qwen remains the default, and external LLM providers are opt-in through server-side configuration.
 - Synthetic data for public development and demonstrations.
 
 A production healthcare deployment requires a formal threat model, penetration testing, operational security controls, backup and recovery exercises, clinical safety assessment and applicable regulatory review.
@@ -661,6 +667,7 @@ Clinical correctness cannot be established by software tests alone. Domain exper
 
 ### Milestone 4 — Private AI and MCP
 - [x] Local Ollama model runtime with Qwen 2.5 3B and nomic-embed-text
+- [x] LiteLLM provider adapter with configuration-based external LLM options
 - [x] Patient-scoped RAG retrieval and source references
 - [x] Local evidence-grounded LLM responses with bounded prompt and synthetic-data disclaimer
 - [x] MCP Streamable HTTP server with three API-authorised tools

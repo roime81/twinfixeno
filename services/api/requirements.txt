@@ -10,3 +10,5 @@ prometheus-fastapi-instrumentator==7.1.0
 opentelemetry-api==1.45.2
 opentelemetry-sdk==1.45.2
 opentelemetry-exporter-otlp-proto-grpc==1.45.2
+# LiteLLM provider abstraction; pinned to a verified-provenance release.
+litellm==1.108.10
