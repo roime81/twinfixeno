@@ -2,6 +2,8 @@
 
 **Status: NOT APPROVED FOR PRODUCTION OR REAL PATIENT DATA.**
 
+Use [GO-LIVE-ACCEPTANCE.md](GO-LIVE-ACCEPTANCE.md) as the evidence and sign-off register for Information Security, Platform Operations/SRE, Privacy/Data Governance and Clinical Safety.
+
 The integrated Compose stack is a runnable synthetic-data development/review environment. Its local seed contains 10,000 fictional patient records and approximately 60,000 fictional observation rows in PostgreSQL. It is not a production deployment. Synthetic names and values are generated for testing and must never be treated as real clinical histories. Passing unit/API tests does not change this status.
 
 ## What this release can demonstrate
