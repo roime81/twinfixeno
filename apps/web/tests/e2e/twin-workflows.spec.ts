@@ -11,17 +11,18 @@ async function signInAsDemoUser(
 ) {
   await page.goto("/");
   const usernameField = page.locator('input[name="username"]');
-  await expect(usernameField).toBeVisible({ timeout: 120_000 });
+  await expect(usernameField).toBeVisible({ timeout: 45_000 });
   await usernameField.fill(username);
   await page.locator('input[name="password"]').fill(password);
   await page.locator("#kc-login").click();
 
-  const dashboard = page.getByRole("heading", { name: "Command centre" });
+  const dashboard = page.getByRole("heading", { name: "Command centre", level: 1 });
   try {
-    await expect(dashboard).toBeVisible({ timeout: 120_000 });
+    await expect(dashboard).toBeVisible({ timeout: 45_000 });
   } catch {
-    const errorText = await page.locator("#input-error, .alert-error, [role='alert']").first()
-      .textContent().catch(() => null);
+    const visibleErrors = await page.locator("#input-error:visible, .alert-error:visible, [role='alert']:visible")
+      .allTextContents().catch(() => []);
+    const errorText = visibleErrors.map((value) => value.trim()).filter(Boolean).join(" | ");
     throw new Error(
       "Keycloak OIDC login did not reach the workspace for " + username +
       "; current URL: " + page.url() + "; Keycloak message: " + (errorText || "not shown"),
@@ -38,7 +39,7 @@ test("clinician can use the patient twin workflows and is kept out of admin gove
   await expect(page.getByRole("button", { name: "Governance & audit" })).toHaveCount(0);
 
   await page.getByRole("button", { name: "Clinical timeline" }).click();
-  await expect(page.getByRole("heading", { name: "Clinical timeline" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Clinical timeline", level: 1 })).toBeVisible();
 
   await page.getByRole("button", { name: "Command centre" }).click();
   await page.getByRole("button", { name: "Sync FHIR" }).click();
@@ -73,6 +74,7 @@ test("clinician can use the patient twin workflows and is kept out of admin gove
 
 
 test("administrator can search the 10,000-patient registry and manage access grants", async ({ page }) => {
+  test.setTimeout(180_000);
   await signInAsDemoUser(page, "demo.admin", adminPassword);
   await page.getByRole("button", { name: "Patient registry" }).click();
   await expect(page.getByText("10,000 patients in registry")).toBeVisible({ timeout: 30_000 });
@@ -96,6 +98,7 @@ test("administrator can search the 10,000-patient registry and manage access gra
 
 
 test("researcher receives read-only controls in the clinical workspace", async ({ page }) => {
+  test.setTimeout(180_000);
   await signInAsDemoUser(page, "demo.researcher", researcherPassword);
   await expect(page.getByText("Alex Morgan").first()).toBeVisible();
   await expect(page.getByRole("button", { name: "Governance & audit" })).toHaveCount(0);
