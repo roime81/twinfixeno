@@ -9,6 +9,7 @@ import uuid
 from datetime import datetime, timezone
 
 import requests
+from litellm import completion
 from sqlalchemy import select
 
 from .models import (
@@ -24,7 +25,42 @@ QDRANT = os.getenv("QDRANT_URL", "http://qdrant:6333").rstrip("/")
 COLLECTION = os.getenv("QDRANT_COLLECTION", "twinfixeno_clinical")
 EMBED = os.getenv("OLLAMA_EMBED_MODEL", "nomic-embed-text")
 CHAT = os.getenv("OLLAMA_CHAT_MODEL", "qwen2.5:3b")
+# LiteLLM provides a provider-neutral chat interface. Keep local Ollama as default.
+LLM_MODEL = os.getenv("LLM_MODEL", f"ollama_chat/{CHAT}").strip()
+LLM_API_BASE = os.getenv("LLM_API_BASE", "").strip()
+LLM_API_KEY = os.getenv("LLM_API_KEY", "").strip()
 TIMEOUT = int(os.getenv("AI_REQUEST_TIMEOUT", "120"))
+
+
+def _is_ollama_chat() -> bool:
+    return LLM_MODEL.startswith(("ollama/", "ollama_chat/"))
+
+
+def _chat_completion(messages: list[dict]) -> str:
+    """Generate a response through LiteLLM without changing RAG or retrieval."""
+    kwargs = {
+        "model": LLM_MODEL,
+        "messages": messages,
+        "temperature": 0.1,
+        "timeout": TIMEOUT,
+    }
+    if LLM_API_BASE:
+        kwargs["api_base"] = LLM_API_BASE
+    elif _is_ollama_chat():
+        kwargs["api_base"] = OLLAMA
+    if LLM_API_KEY:
+        kwargs["api_key"] = LLM_API_KEY
+    if _is_ollama_chat():
+        # Preserve the existing local Qwen context-window setting.
+        kwargs["extra_body"] = {"options": {"num_ctx": 4096}}
+
+    response = completion(**kwargs)
+    content = response.choices[0].message.content
+    if isinstance(content, list):
+        content = "".join(
+            part.get("text", "") for part in content if isinstance(part, dict)
+        )
+    return (content or "").strip()
 
 PROMPT_ID = "twinfixeno-evidence-assistant"
 PROMPT_VERSION = "1.0.0"
@@ -59,7 +95,8 @@ def ai_status() -> dict:
     status = {
         "ollama": False,
         "qdrant": False,
-        "chat_model": CHAT,
+        "chat_model": LLM_MODEL,
+        "chat_provider": LLM_MODEL.split("/", 1)[0] if "/" in LLM_MODEL else "custom",
         "embedding_model": EMBED,
         "prompt_id": PROMPT_ID,
         "prompt_version": PROMPT_VERSION,
@@ -69,13 +106,16 @@ def ai_status() -> dict:
     try:
         models = call("GET", OLLAMA + "/api/tags").json().get("models", [])
         names = {item.get("name") or item.get("model") for item in models}
+        local_chat_ready = any(
+            name == CHAT or name.startswith(CHAT + ":") for name in names if name
+        )
         status.update(
             ollama=True,
-            chat_model_ready=any(name == CHAT or name.startswith(CHAT + ":") for name in names if name),
+            chat_model_ready=local_chat_ready if _is_ollama_chat() else None,
             embedding_model_ready=any(name == EMBED or name.startswith(EMBED + ":") for name in names if name),
         )
         digests = _model_digests()
-        status["chat_model_digest"] = digests.get(CHAT)
+        status["chat_model_digest"] = digests.get(CHAT) if _is_ollama_chat() else None
         status["embedding_model_digest"] = digests.get(EMBED)
     except requests.RequestException as exc:
         status["ollama_error"] = str(exc)
@@ -89,8 +129,8 @@ def ai_status() -> dict:
     status["ready"] = bool(
         status["ollama"]
         and status["qdrant"]
-        and status.get("chat_model_ready")
         and status.get("embedding_model_ready")
+        and status.get("chat_model_ready") is not False
     )
     return status
 
@@ -266,8 +306,8 @@ def answer_patient(db, patient_id: int, question: str, top_k: int = 5) -> dict:
     ).json().get("result", [])
 
     metadata = {
-        "model": CHAT,
-        "chat_model_digest": _model_digests().get(CHAT),
+        "model": LLM_MODEL,
+        "chat_model_digest": _model_digests().get(CHAT) if _is_ollama_chat() else None,
         "embedding_model": EMBED,
         "embedding_model_digest": _model_digests().get(EMBED),
         "prompt_id": PROMPT_ID,
@@ -311,20 +351,10 @@ def answer_patient(db, patient_id: int, question: str, top_k: int = 5) -> dict:
         + "\n</patient_evidence>\n\nQuestion: "
         + question
     )
-    response = call(
-        "POST",
-        OLLAMA + "/api/chat",
-        json={
-            "model": CHAT,
-            "stream": False,
-            "messages": [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt},
-            ],
-            "options": {"temperature": 0.1, "num_ctx": 4096},
-        },
-    ).json()
-    answer = response.get("message", {}).get("content", "").strip()
+    answer = _chat_completion([
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": user_prompt},
+    ])
     answer_digest = hashlib.sha256(answer.encode("utf-8")).hexdigest()
 
     return {
