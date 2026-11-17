@@ -10,6 +10,8 @@ on:
       - "compose.yaml"
       - ".env.example"
       - "infrastructure/**"
+      - "docs/**"
+      - "CHANGELOG.md"
       - ".github/workflows/api-tests.yml"
   pull_request:
     paths:
@@ -52,6 +54,12 @@ jobs:
           done
           docker logs twinfixeno-hapi
           exit 1
+      - name: Run LiteLLM provider adapter unit tests
+        env:
+          DATABASE_URL: sqlite:///./ci-test.db
+          AUTH_REQUIRED: "false"
+          PYTHONPATH: ${{ github.workspace }}/services/api
+        run: pytest -q tests/test_litellm_provider.py
       - name: Run API and live FHIR tests
         env:
           DATABASE_URL: sqlite:///./ci-test.db
