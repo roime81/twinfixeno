@@ -420,6 +420,8 @@ FHIR resources are matched to the FHIR Patient reference before they are stored.
 
 ### Local AI and RAG
 
+Chat generation now uses LiteLLM as a provider abstraction while retaining local Ollama/Qwen as the default. Ollama remains responsible for `nomic-embed-text` embeddings, and Qdrant patient-filtered retrieval is unchanged. External providers can be enabled through server-side environment configuration; see [LLM provider configuration](docs/LLM-PROVIDERS.md). No UI, API route, MCP tool or orchestration redesign is included.
+
 The bundled Compose profile starts Ollama and downloads the configured chat model (`qwen2.5:3b`) and embedding model (`nomic-embed-text`). Qdrant stores patient-scoped evidence vectors. In the Evidence Assistant screen:
 
 1. Open **Check local AI status** (the page also checks automatically when opened).
