@@ -4,6 +4,7 @@ import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import Keycloak from "keycloak-js";
 
 type Patient = { id: number; external_id: string; given_name: string; family_name: string; birth_date: string; sex: string };
+type PatientPage = { items: Patient[]; total: number; limit: number; offset: number };
 type Observation = { id: number; code: string; display: string; value: number; unit: string; observed_at: string };
 type FhirStatus = { available: boolean; fhir_version?: string; software?: string; detail?: string };
 type TimelineItem = { resource_type: string; resource_id: string; version_id?: string; title: string; status?: string; effective_at?: string; last_updated?: string; source?: string };
@@ -43,6 +44,8 @@ export default function Home() {
   const [roles, setRoles] = useState<string[]>([]);
   const [view, setView] = useState<View>("overview");
   const [patients, setPatients] = useState<Patient[]>([]);
+  const [registryMatches, setRegistryMatches] = useState<Patient[]>([]);
+  const [registryTotal, setRegistryTotal] = useState(0);
   const [selectedPatientId, setSelectedPatientId] = useState<number | null>(null);
   const [observations, setObservations] = useState<Observation[]>([]);
   const [timeline, setTimeline] = useState<TimelineItem[]>([]);
@@ -122,7 +125,9 @@ export default function Home() {
       ]);
       // Ignore late responses from an earlier selection.
       if (sequence !== patientLoadSequence.current) return;
-      setPatients(current => current.map(item => item.id === patientData.id ? patientData : item));
+      setPatients(current => current.some(item => item.id === patientData.id)
+        ? current.map(item => item.id === patientData.id ? patientData : item)
+        : [patientData, ...current]);
       setObservations(obs);
       setTimeline(events.items || []);
       setSnapshots(snapshotItems);
@@ -190,15 +195,17 @@ export default function Home() {
         setRoles(tokenRoles);
         client.onTokenExpired = () => { client.updateToken(30).catch(() => client.login()); };
         const [patientItems, fhir] = await Promise.all([
-          api<Patient[]>("/api/v1/patients"),
+          api<PatientPage>("/api/v1/patients?limit=100"),
           api<FhirStatus>("/api/v1/integrations/fhir/status"),
         ]);
         if (!alive) return;
-        setPatients(patientItems);
+        setPatients(patientItems.items);
+        setRegistryMatches(patientItems.items);
+        setRegistryTotal(patientItems.total);
         setFhirStatus(fhir);
-        if (patientItems.length) {
-          setSelectedPatientId(patientItems[0].id);
-          await loadPatient(patientItems[0].id);
+        if (patientItems.items.length) {
+          setSelectedPatientId(patientItems.items[0].id);
+          await loadPatient(patientItems.items[0].id);
         } else {
           setLoading(false);
         }
@@ -214,6 +221,30 @@ export default function Home() {
     // Authentication is deliberately initialised once per browser session.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (!authenticated || view !== "registry") return;
+    let active = true;
+    const timer = window.setTimeout(async () => {
+      try {
+        const query = registrySearch.trim();
+        const path = "/api/v1/patients?limit=100" + (query ? "&q=" + encodeURIComponent(query) : "");
+        const result = await api<PatientPage>(path);
+        if (active) {
+          setRegistryMatches(result.items);
+          setRegistryTotal(result.total);
+        }
+      } catch (err: any) {
+        if (active) setError(err?.message || "Unable to search the patient registry.");
+      }
+    }, 250);
+    return () => {
+      active = false;
+      window.clearTimeout(timer);
+    };
+    // The API helper is scoped to this component and uses the current Keycloak session.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authenticated, view, registrySearch]);
 
   useEffect(() => {
     if (authenticated && view === "governance" && selectedPatientId && canAdmin) {
@@ -345,10 +376,7 @@ export default function Home() {
     finally { setBusy(false); }
   }
 
-  const filteredPatients = patients.filter(item => {
-    const query = registrySearch.trim().toLowerCase();
-    return !query || [item.external_id, item.given_name, item.family_name].some(value => value.toLowerCase().includes(query));
-  });
+  const filteredPatients = registryMatches;
   const latest = (name: string) => observations.find(item => item.display === name);
   const vitalCards = [
     { label: "Heart rate", value: latest("Heart rate") },
@@ -423,7 +451,7 @@ export default function Home() {
 
         {!loading && view === "registry" && (
           <section className="panel">
-            <div className="panel-heading"><div><span className="eyebrow">PATIENT MANAGEMENT</span><h3>Authorised patient registry</h3><p className="panel-copy">Only synthetic patients granted to your identity are listed.</p></div><span className="state-pill">{patients.length} record(s)</span></div>
+            <div className="panel-heading"><div><span className="eyebrow">PATIENT MANAGEMENT</span><h3>Authorised patient registry</h3><p className="panel-copy">Only synthetic patients granted to your identity are listed.</p></div><span className="state-pill">{registryTotal.toLocaleString()} patients in registry</span></div>
             <input className="search-input" value={registrySearch} onChange={event => setRegistrySearch(event.target.value)} placeholder="Search patient ID, given name or family name…" />
             <div className="table-wrap"><table><thead><tr><th>Patient</th><th>Identifier</th><th>Date of birth</th><th>Sex</th><th>Access</th><th /></tr></thead><tbody>
               {filteredPatients.map(item => <tr key={item.id}><td><strong>{displayPatient(item)}</strong></td><td>{item.external_id}</td><td>{item.birth_date}</td><td>{item.sex}</td><td><span className="state-pill">{item.id === selectedPatientId ? (permissions.can_write ? "Read / write" : "Read only") : "Granted"}</span></td><td><button className="text-button" onClick={() => void selectPatient(item.id)}>Open twin →</button></td></tr>)}

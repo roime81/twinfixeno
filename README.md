@@ -4,7 +4,7 @@
 
 TWINFixeno is an early-stage, design-driven MVP for creating a longitudinal digital representation of a patient's health journey. It brings together interoperable clinical data, versioned patient-state snapshots, explainable analytics, hypothetical scenario exploration, private local language models and governed Model Context Protocol (MCP) tools.
 
-> **Project status:** Integrated synthetic-data development MVP. The web workspace provides patient registry, timeline, illustrative simulation, snapshot inspection, governance and a local Evidence Assistant. The AI path uses Ollama (Qwen 2.5 3B), `nomic-embed-text` embeddings and patient-filtered Qdrant retrieval; MCP exposes three authenticated, API-authorised tools. This is still a synthetic-data engineering environment, not a validated clinical product or production deployment. See [Production readiness assessment](docs/PRODUCTION-READINESS.md).
+> **Project status:** Integrated synthetic-data development MVP. The web workspace provides a searchable, paginated patient registry, timeline, illustrative simulation, snapshot inspection, governance and a local Evidence Assistant. The local demo seed creates 10,000 synthetic patients with six observations each (approximately 60,000 observation rows) in the application PostgreSQL database. The AI path uses Ollama (Qwen 2.5 3B), `nomic-embed-text` embeddings and patient-filtered Qdrant retrieval; MCP exposes three authenticated, API-authorised tools. This is still a synthetic-data engineering environment, not a validated clinical product or production deployment. See [Production readiness assessment](docs/PRODUCTION-READINESS.md).
 
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![Status](https://img.shields.io/badge/status-MVP%20in%20development-orange.svg)](#roadmap)
@@ -332,7 +332,7 @@ The local Compose stack reads configuration from `.env`. Start from the committe
 Copy-Item .env.example .env
 ```
 
-The example file uses local-only passwords and turns on synthetic demo data plus username grant compatibility so the seeded demo users can sign in. Never reuse these defaults outside the isolated local environment.
+The example file uses local-only passwords, seeds 10,000 synthetic patient IDs, and enables username grant compatibility for the seeded demo identities. Never reuse these defaults outside the isolated local environment.
 
 | Variable | Purpose | Local default |
 |---|---|---|

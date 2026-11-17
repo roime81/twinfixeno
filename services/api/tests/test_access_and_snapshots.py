@@ -7,7 +7,8 @@ from app.snapshots import sha256_json
 def test_clinician_can_access_assigned_patient(client):
     response = client.get("/api/v1/patients")
     assert response.status_code == 200
-    assert response.json()[0]["external_id"] == "SYN-0001"
+    assert response.json()["items"][0]["external_id"] == "SYN-0001"
+    assert response.json()["total"] == 1
 
 def test_unassigned_user_cannot_discover_patient(client):
     from app.main import app
@@ -17,7 +18,7 @@ def test_unassigned_user_cannot_discover_patient(client):
         "roles": ["clinician"]
     }
     assert client.get("/api/v1/patients/1").status_code == 404
-    assert client.get("/api/v1/patients").json() == []
+    assert client.get("/api/v1/patients").json()["items"] == []
 
 def test_researcher_is_read_only(client):
     from app.main import app
@@ -191,3 +192,35 @@ def test_admin_grant_upsert_uses_subject_not_username_or_match(client):
         )).all())
         assert any(item.user_subject == "old-subject" and item.access_level == "read" for item in grants)
         assert any(item.user_subject == "new-subject" and item.access_level == "write" for item in grants)
+
+
+
+def test_patient_list_subject_identity_precedes_username_fallback(client, monkeypatch):
+    from app.main import app
+    from app.auth import get_current_user
+    from app.database import SessionLocal
+    from app.models import PatientAccessGrant
+
+    monkeypatch.setenv("ALLOW_USERNAME_PATIENT_GRANTS", "true")
+    with SessionLocal() as db:
+        db.add(PatientAccessGrant(
+            patient_id=1, user_subject="subject-read-only",
+            username="demo.clinician", access_level="read",
+        ))
+        db.add(PatientAccessGrant(
+            patient_id=1, user_subject=None,
+            username="demo.clinician", access_level="write",
+        ))
+        db.commit()
+
+    app.dependency_overrides[get_current_user] = lambda: {
+        "sub": "subject-read-only",
+        "preferred_username": "demo.clinician",
+        "roles": ["clinician"],
+    }
+    response = client.get("/api/v1/patients")
+    assert response.status_code == 200
+    assert [item["external_id"] for item in response.json()["items"]] == ["SYN-0001"]
+    permissions = client.get("/api/v1/patients/1/permissions")
+    assert permissions.status_code == 200
+    assert permissions.json()["can_write"] is False

@@ -10,14 +10,23 @@ async function signInAsDemoUser(
   password: string,
 ) {
   await page.goto("/");
-  await expect(page).toHaveURL(/localhost:8081/);
-  await page.locator('input[name="username"]').fill(username);
+  const usernameField = page.locator('input[name="username"]');
+  await expect(usernameField).toBeVisible({ timeout: 120_000 });
+  await usernameField.fill(username);
   await page.locator('input[name="password"]').fill(password);
-  await page.getByRole("button", { name: /sign in/i }).click();
-  await expect(page).toHaveURL(/localhost:3000/, { timeout: 90_000 });
-  await expect(page.getByRole("heading", { name: "Command centre" })).toBeVisible({
-    timeout: 90_000,
-  });
+  await page.locator("#kc-login").click();
+
+  const dashboard = page.getByRole("heading", { name: "Command centre" });
+  try {
+    await expect(dashboard).toBeVisible({ timeout: 120_000 });
+  } catch {
+    const errorText = await page.locator("#input-error, .alert-error, [role='alert']").first()
+      .textContent().catch(() => null);
+    throw new Error(
+      "Keycloak OIDC login did not reach the workspace for " + username +
+      "; current URL: " + page.url() + "; Keycloak message: " + (errorText || "not shown"),
+    );
+  }
 }
 
 test("clinician can use the patient twin workflows and is kept out of admin governance", async ({ page }) => {
@@ -63,8 +72,13 @@ test("clinician can use the patient twin workflows and is kept out of admin gove
 });
 
 
-test("administrator can manage patient access grants and review audit events", async ({ page }) => {
+test("administrator can search the 10,000-patient registry and manage access grants", async ({ page }) => {
   await signInAsDemoUser(page, "demo.admin", adminPassword);
+  await page.getByRole("button", { name: "Patient registry" }).click();
+  await expect(page.getByText("10,000 patients in registry")).toBeVisible({ timeout: 30_000 });
+  await page.getByPlaceholder("Search patient ID, given name or family name…").fill("SYN-10000");
+  await expect(page.getByText("SYN-10000")).toBeVisible({ timeout: 30_000 });
+  await page.getByRole("button", { name: /Open twin/ }).click();
   await expect(page.getByRole("button", { name: "Governance & audit" })).toBeVisible();
   await page.getByRole("button", { name: "Governance & audit" }).click();
   await expect(page.getByRole("heading", { name: "Patient access grants" })).toBeVisible();

@@ -107,7 +107,7 @@ jobs:
 
   compose-smoke:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 45
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -287,12 +287,30 @@ jobs:
         run: |
           npm install --no-audit --no-fund
           npx playwright install --with-deps chromium
-      - name: Set deterministic passwords for isolated browser users
+      - name: Prepare permanent isolated E2E identities in Keycloak
+        shell: bash
         run: |
-          docker compose exec -T keycloak /opt/keycloak/bin/kcadm.sh config credentials --server http://localhost:8080 --realm master --user admin --password change-me-before-use
-          docker compose exec -T keycloak /opt/keycloak/bin/kcadm.sh set-password --realm twinfixeno --username demo.clinician --new-password "E2E-Clinician-Only-2026!"
-          docker compose exec -T keycloak /opt/keycloak/bin/kcadm.sh set-password --realm twinfixeno --username demo.admin --new-password "E2E-Admin-Only-2026!"
-          docker compose exec -T keycloak /opt/keycloak/bin/kcadm.sh set-password --realm twinfixeno --username demo.researcher --new-password "E2E-Researcher-Only-2026!"
+          set -euo pipefail
+          set -a
+          source .env
+          set +a
+          KCADM=(docker compose exec -T keycloak /opt/keycloak/bin/kcadm.sh)
+          "${KCADM[@]}" config credentials --server http://localhost:8080 --realm master --user "$KEYCLOAK_ADMIN" --password "$KEYCLOAK_ADMIN_PASSWORD"
+          while IFS='|' read -r username password; do
+            user_json=$("${KCADM[@]}" get users -r twinfixeno -q "username=$username")
+            user_id=$(printf '%s' "$user_json" | python -c 'import json,sys; users=json.load(sys.stdin); print(users[0]["id"] if len(users)==1 else "")')
+            if [ -z "$user_id" ]; then
+              echo "Expected exactly one Keycloak test user: $username" >&2
+              exit 1
+            fi
+            "${KCADM[@]}" update "users/$user_id" -r twinfixeno -s 'requiredActions=[]'
+            "${KCADM[@]}" set-password -r twinfixeno --username "$username" --new-password "$password"
+            echo "Prepared permanent E2E identity: $username"
+          done <<'USERS'
+          demo.clinician|E2E-Clinician-Only-2026!
+          demo.admin|E2E-Admin-Only-2026!
+          demo.researcher|E2E-Researcher-Only-2026!
+          USERS
       - name: Run browser E2E workflows
         working-directory: apps/web
         env:

@@ -13,7 +13,7 @@ docker compose up --build -d
 docker compose ps
 ```
 
-The API container runs `alembic upgrade head` before serving requests; the initial metadata baseline creates missing tables and installs PostgreSQL immutability triggers without dropping pre-existing tables. It does not alter columns in an already-created table, so schema drift must be handled through a reviewed migration. `SEED_DEMO_DATA=true` loads only the synthetic demonstration patient and grants. Set it to `false` to skip demo data in a non-demo environment. The first run downloads the images and builds the web/API/MCP containers. The Compose dependency graph waits for PostgreSQL, Keycloak, HAPI FHIR and Qdrant readiness, then pulls the Ollama chat and embedding models before starting the API and web workspace. The first model download can take several minutes and requires several GB of network transfer and disk space. The browser sends API traffic through APISIX on port 9080; FastAPI port 8000 is retained for OpenAPI and diagnostics.
+The API container runs `alembic upgrade head` before serving requests; the initial metadata baseline creates missing tables and installs PostgreSQL immutability triggers without dropping pre-existing tables. It does not alter columns in an already-created table, so schema drift must be handled through a reviewed migration. `SEED_DEMO_DATA=true` creates the `SYN-0001` demonstration patient and grants, then runs an idempotent batch loader controlled by `SEED_SYNTHETIC_PATIENTS` (default `10000`). The loader ensures patient IDs `SYN-0001` through `SYN-10000` and six synthetic observations per patient, about 60,000 observation rows in total. It skips existing patient IDs and can safely run again after restarts. Set `SEED_DEMO_DATA=false` to skip both demo and generated data. The first run downloads the images and builds the web/API/MCP containers. The Compose dependency graph waits for PostgreSQL, Keycloak, HAPI FHIR and Qdrant readiness, then pulls the Ollama chat and embedding models before starting the API and web workspace. The first model download can take several minutes and requires several GB of network transfer and disk space. The browser sends API traffic through APISIX on port 9080; FastAPI port 8000 is retained for OpenAPI and diagnostics.
 
 ## Local URLs
 
@@ -44,6 +44,17 @@ Use the demo administrator when testing all administrator-only screens and actio
 - `demo.researcher` — `Demo-Research-Change-Me-2026!` (read-only access to SYN-0001)
 
 Keycloak forces a password change at first login. These credentials are public development fixtures, never use them outside the local demo environment. Sign out before switching roles.
+
+## Verify the synthetic PostgreSQL dataset
+
+The application database is the `postgres` Compose service. Verify the loaded records with:
+
+```powershell
+docker compose exec postgres sh -lc 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "SELECT COUNT(*) AS patients FROM patients WHERE external_id LIKE ''SYN-%'';"'
+docker compose exec postgres sh -lc 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "SELECT COUNT(*) AS observations FROM observations;"'
+```
+
+The registry uses server-side search and pagination. Administrators can search all synthetic records; clinicians and researchers see only patients with a matching patient-level grant. The seeded clinician and researcher intentionally receive access only to `SYN-0001`.
 
 ## Useful commands
 

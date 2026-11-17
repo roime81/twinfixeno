@@ -26,3 +26,10 @@ class SnapshotOut(BaseModel):
     version: int
     summary: str
     created_at: datetime
+
+ 
+class PatientPage(BaseModel):
+    items: list[PatientOut]
+    total: int
+    limit: int
+    offset: int

@@ -173,6 +173,7 @@ services:
     environment:
       APP_ENV: ${APP_ENV:-development}
       SEED_DEMO_DATA: ${SEED_DEMO_DATA:-true}
+      SEED_SYNTHETIC_PATIENTS: ${SEED_SYNTHETIC_PATIENTS:-10000}
       DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://${POSTGRES_USER:-twinfixeno}:${POSTGRES_PASSWORD:-local-development-only}@postgres:5432/${POSTGRES_DB:-twinfixeno}}
       KEYCLOAK_ISSUER: ${KEYCLOAK_ISSUER:-http://localhost:8081/realms/twinfixeno}
       KEYCLOAK_JWKS_URL: ${KEYCLOAK_JWKS_URL:-http://keycloak:8080/realms/twinfixeno/protocol/openid-connect/certs}

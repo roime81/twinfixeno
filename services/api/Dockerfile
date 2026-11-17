@@ -19,4 +19,4 @@ COPY --chown=app:app migrations ./migrations
 USER app
 
 EXPOSE 8000
-CMD ["/bin/sh", "-c", "alembic upgrade head && if [ \"${SEED_DEMO_DATA:-false}\" = \"true\" ]; then python -m app.seed; fi && exec uvicorn app.main:app --host 0.0.0.0 --port 8000 --proxy-headers"]
+CMD ["/bin/sh", "-c", "alembic upgrade head && if [ \"${SEED_DEMO_DATA:-false}\" = \"true\" ]; then python -m app.seed && python -m app.seed_dataset --count \"${SEED_SYNTHETIC_PATIENTS:-10000}\"; fi && exec uvicorn app.main:app --host 0.0.0.0 --port 8000 --proxy-headers"]

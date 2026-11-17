@@ -13,7 +13,7 @@ from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.trace import Status, StatusCode
-from sqlalchemy import select, or_, text, func
+from sqlalchemy import select, or_, text, func, exists, false
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -22,7 +22,7 @@ from .models import (
     Patient, Observation, TwinSnapshot, TwinSnapshotArtifact,
     FhirClinicalResource, PatientAccessGrant, SimulationRun, AuditEvent,
 )
-from .schemas import PatientOut, ObservationOut
+from .schemas import PatientOut, ObservationOut, PatientPage
 from .auth import get_current_user
 from .access import get_accessible_patient, require_role, READ_ROLES, WRITE_ROLES
 from .snapshots import create_immutable_snapshot, sha256_json
@@ -153,37 +153,85 @@ def who_am_i(user=Depends(get_current_user)):
 def fhir_status(user=Depends(get_current_user)):
     return fhir.fhir_status()
 
-@app.get("/api/v1/patients", response_model=list[PatientOut])
+@app.get("/api/v1/admin/dataset-status")
+def get_synthetic_dataset_status(db: Session = Depends(get_db), user=Depends(get_current_user)):
+    require_role(user, {"twinfixeno-admin"})
+    patient_count = int(db.scalar(select(func.count(Patient.id))) or 0)
+    synthetic_patient_count = int(db.scalar(
+        select(func.count(Patient.id)).where(Patient.external_id.like("SYN-%"))
+    ) or 0)
+    observation_count = int(db.scalar(select(func.count(Observation.id))) or 0)
+    return {
+        "patient_count": patient_count,
+        "synthetic_patient_count": synthetic_patient_count,
+        "observation_count": observation_count,
+        "expected_seeded_patient_count": int(os.getenv("SEED_SYNTHETIC_PATIENTS", "0") or 0),
+        "database": "postgresql" if os.getenv("DATABASE_URL", "").startswith("postgresql") else "non-postgresql",
+    }
+
+
+@app.get("/api/v1/patients", response_model=PatientPage)
 def list_patients(
     request: Request,
     q: str | None = Query(default=None, max_length=100),
+    limit: int = Query(default=100, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
     user=Depends(get_current_user),
 ):
-    if not set(user.get("roles") or []).intersection(READ_ROLES):
+    roles = set(user.get("roles") or [])
+    if not roles.intersection(READ_ROLES):
         raise HTTPException(status_code=403, detail="A recognised workspace role is required")
-    query = select(Patient).order_by(Patient.family_name, Patient.given_name)
+
+    filters = []
     if q and q.strip():
         pattern = f"%{q.strip()}%"
-        query = query.where(or_(
+        filters.append(or_(
             Patient.external_id.ilike(pattern),
             Patient.given_name.ilike(pattern),
             Patient.family_name.ilike(pattern),
         ))
-    patients = list(db.scalars(query).all())
-    if "twinfixeno-admin" in (user.get("roles") or []):
-        audit(db, user, "patient.registry.search", request, details={"query_present": bool(q), "result_count": len(patients)})
-        return patients
-    visible = []
-    for patient in patients:
-        try:
-            get_accessible_patient(db, patient.id, user)
-            visible.append(patient)
-        except HTTPException as exc:
-            if exc.status_code != 404:
-                raise
-    audit(db, user, "patient.registry.search", request, details={"query_present": bool(q), "result_count": len(visible)})
-    return visible
+
+    if "twinfixeno-admin" not in roles:
+        subject = user.get("sub")
+        username = user.get("preferred_username")
+        access_predicates = []
+        subject_exists = None
+        if subject:
+            subject_exists = exists(select(PatientAccessGrant.id).where(
+                PatientAccessGrant.patient_id == Patient.id,
+                PatientAccessGrant.user_subject == subject,
+            ))
+            access_predicates.append(subject_exists)
+
+        allow_username = os.getenv("ALLOW_USERNAME_PATIENT_GRANTS", "false").lower() in {"1", "true", "yes"}
+        if allow_username and username:
+            username_filters = [
+                PatientAccessGrant.patient_id == Patient.id,
+                PatientAccessGrant.username == username,
+            ]
+            if subject_exists is not None:
+                username_filters.append(~subject_exists)
+            access_predicates.append(exists(select(PatientAccessGrant.id).where(*username_filters)))
+
+        filters.append(or_(*access_predicates) if access_predicates else false())
+
+    total = int(db.scalar(select(func.count(Patient.id)).where(*filters)) or 0)
+    patients = list(db.scalars(
+        select(Patient)
+        .where(*filters)
+        .order_by(Patient.external_id)
+        .offset(offset)
+        .limit(limit)
+    ).all())
+    audit(db, user, "patient.registry.search", request, details={
+        "query_present": bool(q and q.strip()),
+        "result_count": len(patients),
+        "total_count": total,
+        "limit": limit,
+        "offset": offset,
+    })
+    return PatientPage(items=patients, total=total, limit=limit, offset=offset)
 
 @app.post("/api/v1/patients", status_code=201, response_model=PatientOut)
 def create_patient(patient_in: PatientIn, request: Request, db: Session = Depends(get_db), user=Depends(get_current_user)):
@@ -211,15 +259,19 @@ def get_patient_permissions(patient_id: int, db: Session = Depends(get_db), user
     roles = set(user.get("roles") or [])
     can_write = "twinfixeno-admin" in roles
     if not can_write and "clinician" in roles:
-        principal_filters = []
+        grant = None
         if user.get("sub"):
-            principal_filters.append(PatientAccessGrant.user_subject == user["sub"])
-        if user.get("preferred_username"):
-            principal_filters.append(PatientAccessGrant.username == user["preferred_username"])
-        grants = list(db.scalars(select(PatientAccessGrant).where(
-            PatientAccessGrant.patient_id == patient_id, or_(*principal_filters)
-        )).all()) if principal_filters else []
-        can_write = any(grant.access_level == "write" for grant in grants)
+            grant = db.scalar(select(PatientAccessGrant).where(
+                PatientAccessGrant.patient_id == patient_id,
+                PatientAccessGrant.user_subject == user["sub"],
+            ))
+        allow_username = os.getenv("ALLOW_USERNAME_PATIENT_GRANTS", "false").lower() in {"1", "true", "yes"}
+        if grant is None and allow_username and user.get("preferred_username"):
+            grant = db.scalar(select(PatientAccessGrant).where(
+                PatientAccessGrant.patient_id == patient_id,
+                PatientAccessGrant.username == user["preferred_username"],
+            ))
+        can_write = bool(grant and grant.access_level == "write")
     return {"can_read": True, "can_write": can_write, "can_manage_access": "twinfixeno-admin" in roles}
 
 @app.get("/api/v1/patients/{patient_id}/observations", response_model=list[ObservationOut])

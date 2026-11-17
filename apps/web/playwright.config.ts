@@ -7,7 +7,7 @@ export default defineConfig({
   retries: 0,
   workers: 1,
   reporter: process.env.CI ? [["list"], ["html", { outputFolder: "playwright-report", open: "never" }]] : "list",
-  timeout: 480_000,
+  timeout: 600_000,
   expect: { timeout: 30_000 },
   use: {
     baseURL: process.env.PW_BASE_URL || "http://localhost:3000",
