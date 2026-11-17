@@ -4,7 +4,7 @@
 
 TWINFixeno is an early-stage, design-driven MVP for creating a longitudinal digital representation of a patient's health journey. It brings together interoperable clinical data, versioned patient-state snapshots, explainable analytics, hypothetical scenario exploration, private local language models and governed Model Context Protocol (MCP) tools.
 
-> **Project status:** Integrated synthetic-data development MVP. The web workspace provides a searchable, paginated patient registry, timeline, illustrative simulation, snapshot inspection, governance and a local Evidence Assistant. The local demo seed creates 10,000 synthetic patients with six observations each (approximately 60,000 observation rows) in the application PostgreSQL database. The AI path uses Ollama (Qwen 2.5 3B), `nomic-embed-text` embeddings and patient-filtered Qdrant retrieval; MCP exposes three authenticated, API-authorised tools. This is still a synthetic-data engineering environment, not a validated clinical product or production deployment. See [Production readiness assessment](docs/PRODUCTION-READINESS.md).
+> **Project status:** Integrated synthetic-data development MVP. The web workspace provides a searchable, paginated patient registry, timeline, illustrative simulation, snapshot inspection, governance and a local Evidence Assistant. The local demo seed creates 10,000 synthetic patients with six observations each (approximately 60,000 observation rows) in the application PostgreSQL database. The AI path uses LiteLLM with local Ollama/Qwen 2.5 3B as the default chat provider, `nomic-embed-text` embeddings and patient-filtered Qdrant retrieval; MCP exposes three authenticated, API-authorised tools. This is still a synthetic-data engineering environment, not a validated clinical product or production deployment. See [Production readiness assessment](docs/PRODUCTION-READINESS.md).
 
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![Status](https://img.shields.io/badge/status-MVP%20in%20development-orange.svg)](#roadmap)
@@ -608,7 +608,7 @@ Security controls are foundational, even in the MVP.
 - Restricted internal service networking.
 - Append-only or tamper-evident audit design.
 - Prompt, model, retrieval and tool-call traceability.
-- No external LLM API in the default architecture.
+- LiteLLM is the provider abstraction; local Ollama/Qwen remains the default, and external LLM providers are opt-in through server-side configuration.
 - Synthetic data for public development and demonstrations.
 
 A production healthcare deployment requires a formal threat model, penetration testing, operational security controls, backup and recovery exercises, clinical safety assessment and applicable regulatory review.
@@ -667,6 +667,7 @@ Clinical correctness cannot be established by software tests alone. Domain exper
 
 ### Milestone 4 — Private AI and MCP
 - [x] Local Ollama model runtime with Qwen 2.5 3B and nomic-embed-text
+- [x] LiteLLM provider adapter with configuration-based external LLM options
 - [x] Patient-scoped RAG retrieval and source references
 - [x] Local evidence-grounded LLM responses with bounded prompt and synthetic-data disclaimer
 - [x] MCP Streamable HTTP server with three API-authorised tools
