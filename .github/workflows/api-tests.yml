@@ -21,6 +21,8 @@ on:
       - "compose.yaml"
       - ".env.example"
       - "infrastructure/**"
+      - "docs/**"
+      - "CHANGELOG.md"
       - ".github/workflows/api-tests.yml"
 
 jobs:
