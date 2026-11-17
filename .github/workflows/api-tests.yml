@@ -304,7 +304,7 @@ jobs:
               exit 1
             fi
             "${KCADM[@]}" update "users/$user_id" -r twinfixeno -s 'requiredActions=[]'
-            "${KCADM[@]}" set-password -r twinfixeno --username "$username" --new-password "$password"
+            "${KCADM[@]}" set-password -r twinfixeno --userid "$user_id" --new-password "$password"
             echo "Prepared permanent E2E identity: $username"
           done <<'USERS'
           demo.clinician|E2E-Clinician-Only-2026!

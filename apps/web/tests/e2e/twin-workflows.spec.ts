@@ -38,7 +38,7 @@ test("clinician can use the patient twin workflows and is kept out of admin gove
   await expect(page.getByRole("button", { name: "Governance & audit" })).toHaveCount(0);
 
   await page.getByRole("button", { name: "Clinical timeline" }).click();
-  await expect(page.getByRole("heading", { name: "Clinical timeline" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Clinical timeline", level: 1 })).toBeVisible();
 
   await page.getByRole("button", { name: "Command centre" }).click();
   await page.getByRole("button", { name: "Sync FHIR" }).click();
