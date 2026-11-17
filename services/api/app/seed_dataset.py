@@ -52,7 +52,7 @@ def build_synthetic_patient(index: int, anchor: datetime) -> tuple[Patient, list
     birth_days = (birth_end - birth_start).days
     birth_date = birth_start + timedelta(days=rng.randrange(birth_days + 1))
     patient = Patient(
-        external_id=f"SYN-{index:05d}",
+        external_id=f"SYN-{index:04d}",
         given_name=GIVEN_NAMES[rng.randrange(len(GIVEN_NAMES))],
         family_name=FAMILY_NAMES[rng.randrange(len(FAMILY_NAMES))],
         birth_date=birth_date,
@@ -91,13 +91,13 @@ def seed_synthetic_patients(db: Session, target_count: int = 10000, batch_size: 
     created_observations = 0
     for batch_start in range(1, target_count + 1, batch_size):
         batch_end = min(batch_start + batch_size - 1, target_count)
-        external_ids = [f"SYN-{index:05d}" for index in range(batch_start, batch_end + 1)]
+        external_ids = [f"SYN-{index:04d}" for index in range(batch_start, batch_end + 1)]
         existing = set(db.scalars(
             select(Patient.external_id).where(Patient.external_id.in_(external_ids))
         ).all())
         missing_indexes = [
             index for index in range(batch_start, batch_end + 1)
-            if f"SYN-{index:05d}" not in existing
+            if f"SYN-{index:04d}" not in existing
         ]
         if not missing_indexes:
             continue
