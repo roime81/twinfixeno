@@ -306,8 +306,12 @@ jobs:
           set +a
           KCADM=(docker compose exec -T keycloak /opt/keycloak/bin/kcadm.sh)
           "${KCADM[@]}" config credentials --server http://localhost:8080 --realm master --user "$KEYCLOAK_ADMIN" --password "$KEYCLOAK_ADMIN_PASSWORD"
-          # Keep identity input separate from kcadm stdin so every account is provisioned.
-          while IFS='|' read -r username password; do
+          # Use a Bash for-loop so child processes cannot consume remaining identities from stdin.
+          for identity in \
+            'demo.clinician|E2E-Clinician-Only-2026!' \
+            'demo.admin|E2E-Admin-Only-2026!' \
+            'demo.researcher|E2E-Researcher-Only-2026!'; do
+            IFS='|' read -r username password <<< "$identity"
             user_json=$("${KCADM[@]}" get users -r twinfixeno -q "username=$username" </dev/null)
             user_id=$(printf '%s' "$user_json" | python -c 'import json,sys; users=json.load(sys.stdin); print(users[0]["id"] if len(users)==1 else "")')
             if [ -z "$user_id" ]; then
@@ -317,14 +321,7 @@ jobs:
             "${KCADM[@]}" update "users/$user_id" -r twinfixeno -s 'requiredActions=[]' </dev/null
             "${KCADM[@]}" set-password -r twinfixeno --username "$username" --new-password "$password" </dev/null
             echo "Prepared permanent E2E identity: $username"
-          done < <(printf '%s\\n' \\
-            'demo.clinician|E2E-Clinician-Only-2026!' \\
-            'demo.admin|E2E-Admin-Only-2026!' \\
-            'demo.researcher|E2E-Researcher-Only-2026!')
-          demo.clinician|E2E-Clinician-Only-2026!
-          demo.admin|E2E-Admin-Only-2026!
-          demo.researcher|E2E-Researcher-Only-2026!
-          USERS
+          done
       - name: Run browser E2E workflows
         working-directory: apps/web
         env:
